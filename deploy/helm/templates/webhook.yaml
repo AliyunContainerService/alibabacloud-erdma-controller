@@ -1,0 +1,23 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: alibabacloud-erdma-controller
+  labels:
+    {{- include "alibabacloud-erdma-controller.labels" . | nindent 4 }}
+webhooks:
+  - name: {{ .Chart.Name }}.mutating.k8s.io
+    rules:
+      - apiGroups:   [""]
+        apiVersions: ["v1"]
+        operations:  ["CREATE"]
+        resources:   ["pods"]
+        scope:       "Namespaced"
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: alibabacloud-erdma-controller
+        path: /mutating
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    timeoutSeconds: {{ .Values.webhookTimeoutSeconds }}
+    failurePolicy: {{ .Values.webhookFailurePolicy }}

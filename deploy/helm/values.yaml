@@ -1,0 +1,59 @@
+# Default values for alibabacloud-erdma-controller.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+controller:
+  replicaCount: 1
+  image:
+    repository: registry.aliyuncs.com/erdma/controller
+    pullPolicy: Always
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: "latest"
+
+  imagePullSecrets: []
+  nameOverride: ""
+  fullnameOverride: ""
+
+agent:
+  image:
+    repository: registry.aliyuncs.com/erdma/agent
+    pullPolicy: Always
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: "latest"
+
+  imagePullSecrets: []
+  nameOverride: ""
+  fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+webhookFailurePolicy: Ignore
+webhookTimeoutSeconds: 10
+
+config:
+  region: ""
+  clusterDomain: ""
+  enableDevicePlugin: true
+  enableWebhook: true
+  enableInitContainerInject: true
+
+credentials:
+  type: ""
+  accessKeyID: ""
+  accessKeySecret: ""
+

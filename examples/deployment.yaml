@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: erdma
+  name: erdma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: erdma
+  template:
+    metadata:
+      labels:
+        app: erdma
+    spec:
+      containers:
+      - image: nginx
+        imagePullPolicy: Always
+        name: erdma
+        resources:
+          limits:
+            aliyun/erdma: 1

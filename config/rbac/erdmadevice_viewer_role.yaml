@@ -1,0 +1,23 @@
+# permissions for end users to view erdmadevices.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: alibabacloud-erdma-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: erdmadevice-viewer-role
+rules:
+- apiGroups:
+  - network.alibabacloud.com
+  resources:
+  - erdmadevices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - network.alibabacloud.com
+  resources:
+  - erdmadevices/status
+  verbs:
+  - get
