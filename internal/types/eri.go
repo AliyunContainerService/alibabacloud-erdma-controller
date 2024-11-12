@@ -7,6 +7,8 @@ type ERI struct {
 	IsPrimaryENI bool
 	MAC          string
 	InstanceID   string
+	CardIndex    int
+	QueuePair    int
 }
 
 type ERdmaCAP uint32
@@ -49,3 +51,8 @@ type ERdmaDeviceInfo struct {
 }
 
 const ResourceName = "aliyun/erdma"
+
+const (
+	ENIStatusInUse     string = "InUse"
+	ENIStatusAvailable string = "Available"
+)

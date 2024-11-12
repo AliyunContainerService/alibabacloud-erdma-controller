@@ -29,7 +29,7 @@ func init() {
 }
 
 type Kubernetes interface {
-	WaitEriInfo() ([]v1.ERdmaDevice, error)
+	WaitEriInfo() (*v1.ERdmaDevice, error)
 }
 
 func NewKubernetes() (Kubernetes, error) {
@@ -57,8 +57,8 @@ type k8s struct {
 	client   client.Client
 }
 
-func (k *k8s) WaitEriInfo() ([]v1.ERdmaDevice, error) {
-	devices := []v1.ERdmaDevice{}
+func (k *k8s) WaitEriInfo() (*v1.ERdmaDevice, error) {
+	device := &v1.ERdmaDevice{}
 	err := wait.PollUntilContextTimeout(context.TODO(), 1*time.Minute, 1*time.Minute, true, func(context.Context) (bool, error) {
 		erdmaDeviceList := &v1.ERdmaDeviceList{}
 		err := k.client.List(context.TODO(), erdmaDeviceList, client.MatchingLabels{
@@ -74,11 +74,11 @@ func (k *k8s) WaitEriInfo() ([]v1.ERdmaDevice, error) {
 			k8sLog.Info("waiting for erdma devices")
 			return false, nil
 		}
-		devices = erdmaDeviceList.Items
+		device = &erdmaDeviceList.Items[0]
 		return true, nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait erdma devices, %v", err)
 	}
-	return devices, nil
+	return device, nil
 }

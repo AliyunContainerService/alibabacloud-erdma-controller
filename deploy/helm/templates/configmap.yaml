@@ -8,6 +8,7 @@ data:
   config.json: |
     {
       "region": "{{ .Values.config.region }}",
+      "manageNonOwnedENIs": {{ .Values.config.manageNonOwnedENIs }},
       "controllerNamespace": "kube-system",
       "controllerName": "alibabacloud-erdma-controller",
       "clusterDomain": "cluster.local",

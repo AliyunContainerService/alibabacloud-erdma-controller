@@ -40,5 +40,6 @@ rules:
       - network.alibabacloud.com
     resources:
       - 'erdmadevices'
+      - 'erdmadevices/status'
     verbs:
       - '*'

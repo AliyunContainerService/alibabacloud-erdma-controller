@@ -39,21 +39,45 @@ spec:
           spec:
             description: ERdmaDeviceSpec defines the desired state of ERdmaDevice
             properties:
-              id:
-                type: string
-              instanceID:
+              devices:
                 description: Foo is an example field of ERdmaDevice. Edit erdmadevice_types.go
                   to remove/update
-                type: string
-              isPrimaryENI:
-                type: boolean
-              mac:
-                type: string
-              networkCardIndex:
-                type: integer
+                items:
+                  properties:
+                    id:
+                      type: string
+                    instanceID:
+                      type: string
+                    isPrimaryENI:
+                      type: boolean
+                    mac:
+                      type: string
+                    networkCardIndex:
+                      type: integer
+                    queuePair:
+                      type: integer
+                  type: object
+                type: array
+            required:
+            - devices
             type: object
           status:
             description: ERdmaDeviceStatus defines the observed state of ERdmaDevice
+            properties:
+              devices:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                items:
+                  properties:
+                    id:
+                      type: string
+                    message:
+                      type: string
+                    status:
+                      type: string
+                  type: object
+                type: array
             type: object
         type: object
     served: true

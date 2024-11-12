@@ -164,6 +164,16 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ERdmaDevice")
 		os.Exit(1)
 	}
+
+	if err = (&controller.NodeReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		EriClient: eriClient,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Node")
+		os.Exit(1)
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

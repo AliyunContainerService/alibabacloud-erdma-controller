@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,7 +37,7 @@ func hostExec(cmd string) (string, error) {
 }
 
 func EnsureSMCR() error {
-	_, err := hostExec("which smcss || yum install -y smc-tools")
+	_, err := hostExec("which smcss || yum install -y smc-tools || apt install -y smc-tools")
 	if err != nil {
 		return err
 	}
@@ -77,18 +78,26 @@ func GetERdmaDevPathsFromRdmaLink(rdmaLink *netlink.RdmaLink) ([]string, error) 
 }
 
 func GetERdmaFromLink(link netlink.Link) (*netlink.RdmaLink, error) {
+	if link.Attrs().OperState != netlink.OperUp {
+		driverLog.Info("link down, try to up it", "link", link.Attrs().Name)
+		_, err := hostExec("dhclient " + link.Attrs().Name)
+		if err != nil {
+			return nil, fmt.Errorf("dhclient failed for %s, %v", link.Attrs().Name, err)
+		}
+	}
 	rdmaLinks, err := netlink.RdmaLinkList()
 	if err != nil {
 		return nil, fmt.Errorf("error list rdma links, %v", err)
 	}
+	linkHwAddr := link.Attrs().HardwareAddr
+	// erdma guid first byte is ^= 0x2
+	linkHwAddr[0] ^= 0x2
 	for _, rl := range rdmaLinks {
 		rdmaHwAddr, err := parseERdmaLinkHwAddr(rl.Attrs.NodeGuid)
 		if err != nil {
 			return nil, err
 		}
-		linkHwAddr := link.Attrs().HardwareAddr
-		// erdma guid first byte is ^= 0x2
-		linkHwAddr[0] ^= 0x2
+		driverLog.Info("check rdma link", "rdmaLink", rl.Attrs.Name, "rdmaHwAddr", rdmaHwAddr.String(), "linkHwAddr", linkHwAddr.String())
 		if rdmaHwAddr.String() == linkHwAddr.String() {
 			return rl, nil
 		}
@@ -148,4 +157,21 @@ func ConfigForNetDevice(pnet string, netDevice string) error {
 		return fmt.Errorf("failed to config smc-pnet net device: %v, output: %v", err, string(output))
 	}
 	return nil
+}
+
+func GetERDMANumaNode(info *netlink.RdmaLink) (int64, error) {
+	devNumaPath := path.Join("/sys/class/infiniband/", info.Attrs.Name, "device/numa_node")
+	numaStr, err := os.ReadFile(devNumaPath)
+	if err != nil {
+		return -1, fmt.Errorf("failed to get numa node for %s: %v", info.Attrs.Name, err)
+	}
+	numaStr = bytes.Trim(numaStr, "\n")
+	numa, err := strconv.Atoi(string(numaStr))
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse numa node for %s: %v", info.Attrs.Name, err)
+	}
+	if numa < 0 {
+		numa = 0
+	}
+	return int64(numa), nil
 }

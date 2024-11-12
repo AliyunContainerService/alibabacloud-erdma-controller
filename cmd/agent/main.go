@@ -16,12 +16,15 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	var (
-		preferDriver string
+		preferDriver    string
+		allocAllDevices bool
 	)
 	flag.StringVar(&preferDriver, "prefer-driver", "", "prefer driver")
+	flag.BoolVar(&allocAllDevices, "allocate-all-devices", false,
+		"allocate all erdma devices for resource request, true => alloc all, false => alloc devices based on numa")
 	flag.Parse()
 
-	eriAgent, err := agent.NewAgent(preferDriver)
+	eriAgent, err := agent.NewAgent(preferDriver, allocAllDevices)
 	if err != nil {
 		panic(err)
 	}

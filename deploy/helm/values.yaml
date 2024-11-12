@@ -20,7 +20,8 @@ agent:
     pullPolicy: Always
     # Overrides the image tag whose default is the chart appVersion.
     tag: "latest"
-
+  preferDriver: ""
+  allocateAllDevices: false
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
@@ -47,6 +48,7 @@ webhookTimeoutSeconds: 10
 
 config:
   region: ""
+  manageNonOwnedENIs: true
   clusterDomain: ""
   enableDevicePlugin: true
   enableWebhook: true

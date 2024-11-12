@@ -27,7 +27,12 @@ func (d *OFEDDriver) Install() error {
 			return err
 		}
 	}
-	_, err := hostExec("modprobe erdma")
+	_, err := hostExec("if [ -f /sys/module/erdma/parameters/compat_mode ] && [ \"N\" == $(cat /sys/module/erdma/parameters/compat_mode) ]; then rmmod erdma && modprobe erdma compat_mode=Y; else modprobe erdma compat_mode=Y; fi")
+	if err != nil {
+		return fmt.Errorf("install erdma driver failed: %v", err)
+	}
+
+	_, err = hostExec("modprobe erdma")
 	if err != nil {
 		return fmt.Errorf("install erdma driver failed: %v", err)
 	}
@@ -54,10 +59,16 @@ func (d *OFEDDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error)
 				return nil, fmt.Errorf("get erdma dev paths failed: %v", err)
 			}
 
+			numa, err := GetERDMANumaNode(rdmaLink)
+			if err != nil {
+				return nil, fmt.Errorf("get erdma dev numa failed: %v", err)
+			}
+
 			return &types.ERdmaDeviceInfo{
 				Name:         rdmaLink.Attrs.Name,
 				MAC:          eri.MAC,
 				DevPaths:     devPaths,
+				NUMA:         numa,
 				Capabilities: types.ERDMA_CAP_VERBS | types.ERDMA_CAP_OOB,
 			}, nil
 		}

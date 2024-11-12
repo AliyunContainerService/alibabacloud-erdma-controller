@@ -28,6 +28,15 @@ spec:
         - name: {{ .Chart.Name }}
           securityContext:
             privileged: true
+          command:
+            - /usr/local/bin/agent
+            {{ if .Values.agent.preferDriver }}
+            - --prefer-driver
+            - {{ .Values.agent.preferDriver }}
+            {{ end }}
+            {{ if .Values.agent.allocateAllDevices }}
+            - --allocate-all-devices
+            {{ end }}
           image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
           env:

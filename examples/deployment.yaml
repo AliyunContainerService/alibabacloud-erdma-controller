@@ -5,12 +5,14 @@ metadata:
     app: erdma
   name: erdma
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: erdma
   template:
     metadata:
+      annotations:
+        network.alibabacloud.com/erdma-smcr: "true"
       labels:
         app: erdma
     spec:

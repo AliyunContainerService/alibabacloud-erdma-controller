@@ -37,6 +37,7 @@ func (d *DefaultDriver) Install() error {
 }
 
 func (d *DefaultDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error) {
+	driverLog.Info("probe device", "eri", eri)
 	links, err := netlink.LinkList()
 	if err != nil {
 		return nil, fmt.Errorf("list link failed: %v", err)
@@ -56,10 +57,16 @@ func (d *DefaultDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, err
 				return nil, fmt.Errorf("get erdma dev paths failed: %v", err)
 			}
 
+			numa, err := GetERDMANumaNode(rdmaLink)
+			if err != nil {
+				return nil, fmt.Errorf("get erdma dev numa failed: %v", err)
+			}
+
 			return &types.ERdmaDeviceInfo{
 				Name:         rdmaLink.Attrs.Name,
 				MAC:          eri.MAC,
 				DevPaths:     devPaths,
+				NUMA:         numa,
 				Capabilities: types.ERDMA_CAP_VERBS | types.ERDMA_CAP_RDMA_CM | types.ERDMA_CAP_SMC_R,
 			}, nil
 		}

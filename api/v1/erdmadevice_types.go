@@ -23,23 +23,41 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+type DeviceInfo struct {
+	InstanceID       string `json:"instanceID,omitempty"`
+	MAC              string `json:"mac,omitempty"`
+	IsPrimaryENI     bool   `json:"isPrimaryENI,omitempty"`
+	ID               string `json:"id,omitempty"`
+	NetworkCardIndex int    `json:"networkCardIndex,omitempty"`
+	QueuePair        int    `json:"queuePair,omitempty"`
+}
+
 // ERdmaDeviceSpec defines the desired state of ERdmaDevice
 type ERdmaDeviceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of ERdmaDevice. Edit erdmadevice_types.go to remove/update
-	InstanceID       string `json:"instanceID,omitempty"`
-	MAC              string `json:"mac,omitempty"`
-	IsPrimaryENI     bool   `json:"isPrimaryENI,omitempty"`
-	ID               string `json:"id,omitempty"`
-	NetworkCardIndex int    `json:"networkCardIndex,omitempty"`
+	Devices []DeviceInfo `json:"devices"`
+}
+
+const (
+	DeviceStatusPending = "Pending"
+	DeviceStatusReady   = "Ready"
+	DeviceStatusFailed  = "Failed"
+)
+
+type DeviceStatus struct {
+	ID      string `json:"id,omitempty"`
+	Status  string `json:"status,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // ERdmaDeviceStatus defines the observed state of ERdmaDevice
 type ERdmaDeviceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Devices []DeviceStatus `json:"devices,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -18,21 +18,16 @@ package controller
 
 import (
 	"context"
+	"github.com/samber/lo"
+	"time"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	networkv1 "github.com/AliyunContainerService/alibabacloud-erdma-controller/api/v1"
-)
-
-const (
-	erdmaFinalizer = "network.alibabacloud.com/erdma-controller"
 )
 
 // ERdmaDeviceReconciler reconciles a ERdmaDevice object
@@ -58,102 +53,42 @@ type ERdmaDeviceReconciler struct {
 func (r *ERdmaDeviceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	erdmaLogger := log.FromContext(ctx).WithName("erdma-controller")
 
-	node := v1.Node{}
-	err := r.Client.Get(ctx, req.NamespacedName, &node)
+	device := networkv1.ERdmaDevice{}
+	err := r.Client.Get(ctx, req.NamespacedName, &device)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return r.RemoveERdmaDevices(ctx, req.Name)
-		}
-		erdmaLogger.Error(err, "Failed to get node")
-		return ctrl.Result{}, err
-	}
-	if !node.GetDeletionTimestamp().IsZero() {
-		return r.RemoveERdmaDevices(ctx, req.Name)
-	}
-	erdmaLogger.WithValues("node", req).Info("Node Added")
-
-	instanceID, err := r.EriClient.InstanceIDFromNode(&node)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	erdmaDevices := networkv1.ERdmaDeviceList{}
-	err = r.Client.List(ctx, &erdmaDevices, client.MatchingLabels{
-		"alibabacloud.com/instance-id": instanceID,
-	})
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if len(erdmaDevices.Items) == 0 {
-		eri, err := r.EriClient.EnsureEriForInstance(instanceID)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if eri == nil {
-			erdmaLogger.Info("node not support erdma: %s(%s)", node.Name, instanceID)
 			return ctrl.Result{}, nil
 		}
-		erdmaDevice := networkv1.ERdmaDevice{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       eri.ID,
-				Finalizers: []string{erdmaFinalizer},
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion: node.APIVersion,
-						Kind:       node.Kind,
-						Name:       node.Name,
-						UID:        node.UID,
-					},
-				},
-				Labels: map[string]string{
-					"alibabacloud.com/instance-id": instanceID,
-					"alibabacloud.com/nodename":    node.Name,
-				},
-			},
-			Spec: networkv1.ERdmaDeviceSpec{
-				ID:           eri.ID,
-				IsPrimaryENI: eri.IsPrimaryENI,
-				MAC:          eri.MAC,
-				InstanceID:   instanceID,
-			},
+		erdmaLogger.Error(err, "Failed to get erdma device")
+		return ctrl.Result{}, err
+	}
+	if !device.GetDeletionTimestamp().IsZero() {
+		return RemoveERdmaDevices(r.Client, ctx, req.Name)
+	}
+	erdmaLogger.WithValues("erdma device", req).Info("erdma device Added")
+
+	if len(device.Spec.Devices) == len(device.Status.Devices) {
+		eriNeedConfig := lo.ContainsBy(device.Status.Devices, func(item networkv1.DeviceStatus) bool {
+			return item.Status != networkv1.DeviceStatusReady
+		})
+		if !eriNeedConfig {
+			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, r.Client.Create(ctx, &erdmaDevice)
 	}
 
-	return ctrl.Result{}, nil
-}
-
-func (r *ERdmaDeviceReconciler) RemoveERdmaDevices(ctx context.Context, nodeName string) (ctrl.Result, error) {
-	erdmaDevices := networkv1.ERdmaDeviceList{}
-	err := r.Client.List(ctx, &erdmaDevices, client.MatchingLabels{
-		"alibabacloud.com/nodename": nodeName,
-	})
+	eriStatus, err := r.EriClient.EnsureEriForInstance(device.Spec.Devices)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-
-	if len(erdmaDevices.Items) == 0 {
-		return ctrl.Result{}, nil
+	device.Status.Devices = eriStatus
+	err = r.Client.Status().Update(ctx, &device)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
-	// todo remove erdma device
-	for _, device := range erdmaDevices.Items {
-		device.Finalizers = []string{}
-		controllerutil.RemoveFinalizer(&device, erdmaFinalizer)
-
-		update := device.DeepCopy()
-		_, err := controllerutil.CreateOrPatch(ctx, r.Client, update, func() error {
-			update.ObjectMeta = device.ObjectMeta
-			return nil
-		})
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
-	for _, erdmaDevice := range erdmaDevices.Items {
-		err := r.Client.Delete(ctx, &erdmaDevice)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	if lo.ContainsBy(eriStatus, func(item networkv1.DeviceStatus) bool {
+		return item.Status != networkv1.DeviceStatusReady
+	}) {
+		return ctrl.Result{Requeue: true, RequeueAfter: 10 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -161,6 +96,6 @@ func (r *ERdmaDeviceReconciler) RemoveERdmaDevices(ctx context.Context, nodeName
 // SetupWithManager sets up the controller with the Manager.
 func (r *ERdmaDeviceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1.Node{}).Owns(&networkv1.ERdmaDevice{}).
+		For(&networkv1.ERdmaDevice{}).
 		Complete(r)
 }

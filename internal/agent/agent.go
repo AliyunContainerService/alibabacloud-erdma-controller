@@ -19,8 +19,9 @@ var (
 )
 
 type Agent struct {
-	kubernetes k8s.Kubernetes
-	driver     drivers.ERdmaDriver
+	kubernetes      k8s.Kubernetes
+	driver          drivers.ERdmaDriver
+	allocAllDevices bool
 }
 
 func stackTriger() {
@@ -46,14 +47,15 @@ func stackTriger() {
 	signal.Notify(sigchain, syscall.SIGUSR1)
 }
 
-func NewAgent(preferDriver string) (*Agent, error) {
+func NewAgent(preferDriver string, allocAllDevice bool) (*Agent, error) {
 	kubernetes, err := k8s.NewKubernetes()
 	if err != nil {
 		return nil, err
 	}
 	return &Agent{
-		kubernetes: kubernetes,
-		driver:     drivers.GetDriver(preferDriver),
+		kubernetes:      kubernetes,
+		driver:          drivers.GetDriver(preferDriver),
+		allocAllDevices: allocAllDevice,
 	}, nil
 }
 
@@ -64,19 +66,20 @@ func (a *Agent) Run() error {
 	if err != nil {
 		return err
 	}
-	agentLog.Info("eri info", "eriInfo", eriInfos)
+	agentLog.Info("eri info", "eriInfo", eriInfos, "driver", a.driver.Name())
 	// 2. install eri driver
 	err = a.driver.Install()
 	if err != nil {
 		return fmt.Errorf("install eri driver failed, err: %v", err)
 	}
 	erdmaDevices := make([]*types.ERdmaDeviceInfo, 0)
-	for _, eriInfo := range eriInfos {
+	for _, eriInfo := range eriInfos.Spec.Devices {
 		deviceInfo, err := a.driver.ProbeDevice(&types.ERI{
-			ID:           eriInfo.Spec.ID,
-			IsPrimaryENI: eriInfo.Spec.IsPrimaryENI,
-			MAC:          eriInfo.Spec.MAC,
-			InstanceID:   eriInfo.Spec.InstanceID,
+			ID:           eriInfo.ID,
+			IsPrimaryENI: eriInfo.IsPrimaryENI,
+			MAC:          eriInfo.MAC,
+			InstanceID:   eriInfo.InstanceID,
+			CardIndex:    eriInfo.NetworkCardIndex,
 		})
 		if err != nil {
 			return fmt.Errorf("probe device failed, err: %v", err)
@@ -94,7 +97,7 @@ func (a *Agent) Run() error {
 		}
 	}
 	// 4. enable deviceplugin
-	devicePlugin := deviceplugin.NewERDMADevicePlugin(erdmaDevices)
+	devicePlugin := deviceplugin.NewERDMADevicePlugin(erdmaDevices, a.allocAllDevices)
 	devicePlugin.Serve()
 	// 5. todo watch & config smc-r and verbs devices
 	return nil

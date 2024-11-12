@@ -2,6 +2,7 @@ package types
 
 type Config struct {
 	Region                    string `json:"region"`
+	ManageNonOwnedERIs        bool   `json:"manageNonOwnedENIs"`
 	ControllerNamespace       string `json:"controllerNamespace"`
 	ControllerName            string `json:"controllerName"`
 	ClusterDomain             string `json:"clusterDomain"`

@@ -30,25 +30,27 @@ const (
 
 // ERDMADevicePlugin implements the Kubernetes device plugin API
 type ERDMADevicePlugin struct {
-	socket  string
-	server  *grpc.Server
-	stop    chan struct{}
-	devices map[string]*types.ERdmaDeviceInfo
+	socket          string
+	server          *grpc.Server
+	stop            chan struct{}
+	devices         map[string]*types.ERdmaDeviceInfo
+	allocAllDevices bool
 	sync.Locker
 }
 
 // NewERDMADevicePlugin returns an initialized ERDMADevicePlugin
-func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo) *ERDMADevicePlugin {
+func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices bool) *ERDMADevicePlugin {
 	devMap := map[string]*types.ERdmaDeviceInfo{}
 	for _, d := range devices {
 		devMap[d.Name] = d
 	}
 	pluginEndpoint := fmt.Sprintf(dpSocketPath, time.Now().Unix())
 	return &ERDMADevicePlugin{
-		socket:  pluginEndpoint,
-		devices: devMap,
-		Locker:  &sync.Mutex{},
-		stop:    make(chan struct{}, 1),
+		socket:          pluginEndpoint,
+		devices:         devMap,
+		Locker:          &sync.Mutex{},
+		allocAllDevices: allocAllDevices,
+		stop:            make(chan struct{}, 1),
 	}
 }
 
@@ -186,21 +188,35 @@ func (m *ERDMADevicePlugin) Allocate(ctx context.Context, r *pluginapi.AllocateR
 	for _, req := range r.GetContainerRequests() {
 		devices := map[string][]string{}
 		var erdmaInfo *types.ERdmaDeviceInfo
-		for _, devID := range req.DevicesIDs {
-			devPath := strings.Split(devID, "/")
-			if len(devPath) <= 1 {
-				continue
+		if !m.allocAllDevices {
+			for _, devID := range req.DevicesIDs {
+				devPath := strings.Split(devID, "/")
+				if len(devPath) <= 1 {
+					continue
+				}
+				if occupied[devPath[0]] != nil {
+					continue
+				}
+				erdmaInfo = m.devices[devPath[0]]
+				devices[devPath[0]] = m.devices[devPath[0]].DevPaths
+				occupied[devPath[0]] = struct{}{}
 			}
-			if occupied[devPath[0]] != nil {
-				continue
+		} else {
+			for _, dev := range m.devices {
+				if occupied[dev.Name] != nil {
+					continue
+				}
+				if erdmaInfo == nil {
+					erdmaInfo = dev
+				}
+				devices[dev.Name] = dev.DevPaths
+				occupied[dev.Name] = struct{}{}
 			}
-			erdmaInfo = m.devices[devPath[0]]
-			devices[devPath[0]] = m.devices[devPath[0]].DevPaths
-			occupied[devPath[0]] = struct{}{}
 		}
 		var (
 			devicePaths []*pluginapi.DeviceSpec
 		)
+
 		lo.ForEach(lo.Values(devices), func(item []string, _ int) {
 			devicePaths = append(devicePaths, lo.Map(item, func(item string, _ int) *pluginapi.DeviceSpec {
 				return &pluginapi.DeviceSpec{
