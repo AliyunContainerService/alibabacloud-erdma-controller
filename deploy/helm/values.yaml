@@ -53,6 +53,7 @@ config:
   enableDevicePlugin: true
   enableWebhook: true
   enableInitContainerInject: true
+  smcInitImage: ""
 
 credentials:
   type: ""

@@ -15,5 +15,6 @@ data:
       "certDir": "/var/lib/certDir",
       "enableDevicePlugin": {{ .Values.config.enableDevicePlugin }},
       "enableWebhook": {{ .Values.config.enableWebhook }},
+      "smcInitImage": "{{ .Values.config.smcInitImage }}",
       "enableInitContainerInject": {{ .Values.config.enableInitContainerInject }}
     }

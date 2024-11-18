@@ -9,6 +9,7 @@ type Config struct {
 	CertDir                   string `json:"certDir"`
 	EnableDevicePlugin        *bool  `json:"enableDevicePlugin"`
 	EnableWebhook             *bool  `json:"enableWebhook"`
+	SMCInitImage              string `json:"smcInitImage"`
 	EnableInitContainerInject *bool  `json:"enableInitContainerInject"`
 }
 

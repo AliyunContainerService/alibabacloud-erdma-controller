@@ -42,4 +42,5 @@ ENTRYPOINT ["/usr/local/bin/smcr_init"]
 FROM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 as agent
 RUN yum install -y smc-tools
 COPY --from=builder /workspace/agent /usr/local/bin/agent
+COPY --from=builder /workspace/smcr_init /usr/local/bin/smcr_init
 ENTRYPOINT ["/usr/local/bin/agent"]

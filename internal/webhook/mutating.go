@@ -73,10 +73,15 @@ func podWebhook(_ context.Context, req *webhook.AdmissionRequest, client client.
 
 	if rdmaRes && *config.GetConfig().EnableDevicePlugin {
 		if _, ok := podAnnotations[consts.AnnotationSMCR]; ok && *config.GetConfig().EnableInitContainerInject {
+			smcInitImage := config.GetConfig().SMCInitImage
+			if smcInitImage == "" {
+				smcInitImage = "registry.cn-hangzhou.aliyuncs.com/erdma/smcr_init:latest"
+			}
 			pod.Spec.InitContainers = append(pod.Spec.InitContainers, corev1.Container{
 				Name:            "smcr-init",
-				Image:           "registry.cn-hangzhou.aliyuncs.com/erdma/smcr_init:latest",
+				Image:           smcInitImage,
 				ImagePullPolicy: "Always",
+				Command:         []string{"/usr/local/bin/smcr_init"},
 				Resources: corev1.ResourceRequirements{
 					Requests: map[corev1.ResourceName]resource.Quantity{types.ResourceName: resource.MustParse(strconv.Itoa(1))},
 					Limits:   map[corev1.ResourceName]resource.Quantity{types.ResourceName: resource.MustParse(strconv.Itoa(1))},
