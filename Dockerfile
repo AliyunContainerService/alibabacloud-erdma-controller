@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.22 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.22 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -34,12 +34,12 @@ USER 65532:65532
 
 ENTRYPOINT ["/manager"]
 
-FROM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 as smcr_init
+FROM --platform=$TARGETPLATFORM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 as smcr_init
 RUN yum install -y smc-tools
 COPY --from=builder /workspace/smcr_init /usr/local/bin/smcr_init
 ENTRYPOINT ["/usr/local/bin/smcr_init"]
 
-FROM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 as agent
+FROM --platform=$TARGETPLATFORM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 as agent
 RUN yum install -y smc-tools
 COPY --from=builder /workspace/agent /usr/local/bin/agent
 ENTRYPOINT ["/usr/local/bin/agent"]
