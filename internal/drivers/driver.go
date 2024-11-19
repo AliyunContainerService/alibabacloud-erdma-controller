@@ -1,8 +1,6 @@
 package drivers
 
 import (
-	"os/exec"
-
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -34,7 +32,7 @@ func GetDriver(name string) ERdmaDriver {
 		return drivers[name]
 	}
 	// pod injected nvidia-smi, prefer ofed driver
-	if _, err := exec.LookPath("nvidia-smi"); err == nil {
+	if _, err := hostExec("which nvidia-smi"); err == nil {
 		if driver, ok := drivers[defaultGPUDriver]; ok {
 			return driver
 		}
