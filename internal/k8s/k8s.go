@@ -59,7 +59,7 @@ type k8s struct {
 
 func (k *k8s) WaitEriInfo() (*v1.ERdmaDevice, error) {
 	device := &v1.ERdmaDevice{}
-	err := wait.PollUntilContextTimeout(context.TODO(), 1*time.Minute, 1*time.Minute, true, func(context.Context) (bool, error) {
+	err := wait.PollUntilContextCancel(context.Background(), 1*time.Minute, true, func(context.Context) (bool, error) {
 		erdmaDeviceList := &v1.ERdmaDeviceList{}
 		err := k.client.List(context.TODO(), erdmaDeviceList, client.MatchingLabels{
 			"alibabacloud.com/nodename": k.nodeName,
@@ -68,7 +68,7 @@ func (k *k8s) WaitEriInfo() (*v1.ERdmaDevice, error) {
 		}})
 		if err != nil {
 			k8sLog.Error(err, "failed to list erdma devices")
-			return false, fmt.Errorf("failed to list erdma devices, %v", err)
+			return true, fmt.Errorf("failed to list erdma devices, %v", err)
 		}
 		if len(erdmaDeviceList.Items) == 0 {
 			k8sLog.Info("waiting for erdma devices")
