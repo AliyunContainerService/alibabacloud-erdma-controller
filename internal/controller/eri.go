@@ -3,6 +3,8 @@ package controller
 import (
 	"fmt"
 	networkv1 "github.com/AliyunContainerService/alibabacloud-erdma-controller/api/v1"
+	"github.com/alibabacloud-go/endpoint-util/service"
+	"github.com/alibabacloud-go/tea/tea"
 	"strings"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/config"
@@ -37,11 +39,17 @@ func NewEriClient() (*EriClient, error) {
 		return nil, err
 	}
 
+	ecsEndpoint, err := service.GetEndpointRules(tea.String("ecs"), tea.String(config.GetConfig().Region), tea.String("regional"), tea.String("vpc"), nil)
+	if err != nil {
+		return nil, err
+	}
 	client, err := ecs.NewClient(&openapi.Config{
-		RegionId:   &config.GetConfig().Region,
-		UserAgent:  ptr.To("AlibabaCloud/ERdma-Controller/0.1"),
-		Credential: cred,
-		Network:    ptr.To("vpc"),
+		RegionId:     &config.GetConfig().Region,
+		UserAgent:    ptr.To("AlibabaCloud/ERdma-Controller/0.1"),
+		Credential:   cred,
+		EndpointType: tea.String("regional"),
+		Network:      tea.String("vpc"),
+		Endpoint:     ecsEndpoint,
 	})
 	if err != nil {
 		return nil, err
