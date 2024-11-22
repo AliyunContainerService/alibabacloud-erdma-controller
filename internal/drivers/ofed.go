@@ -14,7 +14,7 @@ func init() {
 }
 
 var gpuInstallScript = `
-cd /tmp && wget http://mirrors.cloud.aliyuncs.com/erdma/env_setup.sh && bash env_setup.sh --egs
+cd /tmp && rm -f env_setup.sh && wget http://mirrors.cloud.aliyuncs.com/erdma/env_setup.sh && bash env_setup.sh --egs
 `
 
 type OFEDDriver struct{}
