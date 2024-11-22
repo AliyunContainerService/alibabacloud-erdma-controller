@@ -8,8 +8,8 @@ import (
 
 	"k8s.io/utils/ptr"
 
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/api/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/config"
-	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
@@ -72,7 +72,7 @@ func podWebhook(_ context.Context, req *webhook.AdmissionRequest, client client.
 	})
 
 	if rdmaRes && *config.GetConfig().EnableDevicePlugin {
-		if _, ok := podAnnotations[consts.AnnotationSMCR]; ok && *config.GetConfig().EnableInitContainerInject {
+		if _, ok := podAnnotations[consts.PodAnnotationSMCR]; ok && *config.GetConfig().EnableInitContainerInject {
 			smcInitImage := config.GetConfig().SMCInitImage
 			if smcInitImage == "" {
 				smcInitImage = "registry.cn-hangzhou.aliyuncs.com/erdma/smcr_init:latest"

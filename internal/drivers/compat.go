@@ -15,7 +15,7 @@ func init() {
 
 var compatInstallScript = `
 if [ -d /sys/fs/cgroup/cpu/ ]; then cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cpu/tasks && cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/memory/tasks; else 
-cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cgroup.procs; fi && cd /tmp &&
+cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cgroup.procs; fi && cd /tmp && rm -f erdma_installer-1.4.0.tar.gz &&
 wget 'https://mirrors.aliyun.com/erdma/erdma_installer-1.4.0.tar.gz' && tar -xzvf erdma_installer-1.4.0.tar.gz && cd erdma_installer && yum install -y kernel-devel-$(uname -r) gcc-c++ dkms cmake && ERDMA_CM_NO_BOUND_IF=1 ERDMA_FORCE_MAD_ENABLE=1 ./install.sh --batch
 `
 
