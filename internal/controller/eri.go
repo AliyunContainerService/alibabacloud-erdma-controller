@@ -41,6 +41,7 @@ func NewEriClient() (*EriClient, error) {
 		RegionId:   &config.GetConfig().Region,
 		UserAgent:  ptr.To("AlibabaCloud/ERdma-Controller/0.1"),
 		Credential: cred,
+		Network:    ptr.To("vpc"),
 	})
 	if err != nil {
 		return nil, err
