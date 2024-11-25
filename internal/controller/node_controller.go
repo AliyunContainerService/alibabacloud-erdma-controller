@@ -88,8 +88,8 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		erdmaDevice := networkv1.ERdmaDevice{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:       node.Name,
-				Finalizers: []string{erdmaFinalizer},
+				Name: node.Name,
+				//Finalizers: []string{erdmaFinalizer},
 				OwnerReferences: []metav1.OwnerReference{
 					{
 						APIVersion: node.APIVersion,
