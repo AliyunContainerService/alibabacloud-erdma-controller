@@ -15,8 +15,10 @@ func init() {
 
 var defaultInstallScript = `
 if [ -d /sys/fs/cgroup/cpu/ ]; then cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cpu/tasks && cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/memory/tasks; else 
-cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cgroup.procs; fi && cd /tmp && rm -f erdma_installer-1.4.0.tar.gz &&
-wget 'https://mirrors.aliyun.com/erdma/erdma_installer-1.4.0.tar.gz' && tar -xzvf erdma_installer-1.4.0.tar.gz && cd erdma_installer && yum install -y kernel-devel-$(uname -r) gcc-c++ dkms cmake && ERDMA_CM_NO_BOUND_IF=1 ./install.sh --batch
+cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cgroup.procs; fi &&
+if grep -q "Alibaba Cloud Linux Lifsea" /etc/os-release; then lifseacli pkg install kernel-modules-$(uname -r); modprobe erdma; else 
+cd /tmp && rm -f erdma_installer-1.4.0.tar.gz &&
+wget 'http://mirrors.cloud.aliyuncs.com/erdma/erdma_installer-1.4.0.tar.gz' && tar -xzvf erdma_installer-1.4.0.tar.gz && cd erdma_installer && yum install -y kernel-devel-$(uname -r) gcc-c++ dkms cmake && ERDMA_CM_NO_BOUND_IF=1 ./install.sh --batch; fi
 `
 
 type DefaultDriver struct{}

@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 
 controller:
-  replicaCount: 1
+  replicaCount: 2
   image:
     repository: registry.aliyuncs.com/erdma/controller
     pullPolicy: Always

@@ -20,12 +20,25 @@ import (
 )
 
 func driverExists() bool {
+	if isContainerOS() {
+		_, err := hostExec("modinfo erdma")
+		if err != nil {
+			driverLog.Info("driver not exists", "checklog", err)
+			return false
+		}
+		return true
+	}
 	_, err := hostExec("stat /bin/eadm && modinfo erdma")
 	if err != nil {
 		driverLog.Info("driver not exists", "checklog", err)
 		return false
 	}
 	return true
+}
+
+func isContainerOS() bool {
+	_, err := hostExec("grep -q \"Alibaba Cloud Linux Lifsea\" /etc/os-release")
+	return err == nil
 }
 
 func hostExec(cmd string) (string, error) {
@@ -37,7 +50,7 @@ func hostExec(cmd string) (string, error) {
 }
 
 func EnsureSMCR() error {
-	_, err := hostExec("which smcss || yum install -y smc-tools || apt install -y smc-tools")
+	_, err := hostExec("which smcss || yum install -y smc-tools || apt install -y smc-tools || lifseacli pkg install smc-tools")
 	if err != nil {
 		return err
 	}

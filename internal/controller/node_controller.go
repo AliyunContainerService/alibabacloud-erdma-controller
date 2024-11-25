@@ -83,7 +83,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			return ctrl.Result{}, err
 		}
 		if eri == nil {
-			erdmaLogger.Info("node not support erdma: %s(%s)", node.Name, instanceID)
+			erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
 			return ctrl.Result{}, nil
 		}
 		erdmaDevice := networkv1.ERdmaDevice{
