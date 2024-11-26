@@ -89,15 +89,7 @@ func GetERdmaDevPathsFromRdmaLink(rdmaLink *netlink.RdmaLink) ([]string, error) 
 	}
 	return devPaths, nil
 }
-
 func GetERdmaFromLink(link netlink.Link) (*netlink.RdmaLink, error) {
-	if link.Attrs().OperState != netlink.OperUp {
-		driverLog.Info("link down, try to up it", "link", link.Attrs().Name)
-		_, err := hostExec("dhclient " + link.Attrs().Name)
-		if err != nil {
-			return nil, fmt.Errorf("dhclient failed for %s, %v", link.Attrs().Name, err)
-		}
-	}
 	rdmaLinks, err := netlink.RdmaLinkList()
 	if err != nil {
 		return nil, fmt.Errorf("error list rdma links, %v", err)

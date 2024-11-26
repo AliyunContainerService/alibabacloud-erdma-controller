@@ -49,6 +49,10 @@ func (d *OFEDDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error)
 			continue
 		}
 		if link.Attrs().HardwareAddr.String() == eri.MAC {
+			err := EnsureNetDevice(link, eri)
+			if err != nil {
+				return nil, fmt.Errorf("ensure net device failed: %v", err)
+			}
 			rdmaLink, err := GetERdmaFromLink(link)
 			if err != nil {
 				return nil, fmt.Errorf("get erdma link failed: %v", err)
