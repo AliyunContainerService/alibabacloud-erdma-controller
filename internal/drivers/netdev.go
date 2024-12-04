@@ -4,13 +4,14 @@ package drivers
 
 import (
 	"fmt"
-	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
-	"github.com/samber/lo"
-	"github.com/vishvananda/netlink"
 	"io"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
+	"github.com/samber/lo"
+	"github.com/vishvananda/netlink"
 )
 
 const (

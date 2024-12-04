@@ -2,10 +2,12 @@ package controller
 
 import (
 	"fmt"
+	"strings"
+
 	networkv1 "github.com/AliyunContainerService/alibabacloud-erdma-controller/api/v1"
 	"github.com/alibabacloud-go/endpoint-util/service"
 	"github.com/alibabacloud-go/tea/tea"
-	"strings"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/config"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
@@ -33,8 +35,8 @@ type EriClient struct {
 	managedNonOwned bool
 }
 
-func NewEriClient() (*EriClient, error) {
-	cred, err := getCredential()
+func NewEriClient(k8sClient client.Client) (*EriClient, error) {
+	cred, err := getCredential(k8sClient)
 	if err != nil {
 		return nil, err
 	}

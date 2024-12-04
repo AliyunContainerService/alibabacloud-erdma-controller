@@ -150,7 +150,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	eriClient, err := controller.NewEriClient()
+	eriClient, err := controller.NewEriClient(directClient)
 	if err != nil {
 		setupLog.Error(err, "cannot start eri client")
 		os.Exit(1)

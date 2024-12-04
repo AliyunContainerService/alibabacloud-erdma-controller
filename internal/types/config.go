@@ -18,6 +18,8 @@ type Credentials struct {
 	Type            string    `json:"type"`
 	AccessKeyID     Sensitive `json:"accessKeyID"`
 	AccessKeySecret Sensitive `json:"accessKeySecret"`
+	StsSecretNS     string    `json:"stsSecretNS"`
+	StsSecretName   string    `json:"stsSecretName"`
 }
 
 func (c Sensitive) String() string {

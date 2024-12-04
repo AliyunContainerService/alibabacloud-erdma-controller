@@ -28,6 +28,14 @@ rules:
     resourceNames:
       - "alibabacloud-erdma-controller-webhook-cert"
   - apiGroups:
+      - ''
+    resources:
+      - secrets
+    verbs:
+      - get
+    resourceNames:
+      - "addon.network.token"
+  - apiGroups:
       - 'admissionregistration.k8s.io'
     resources:
       - mutatingwebhookconfigurations
