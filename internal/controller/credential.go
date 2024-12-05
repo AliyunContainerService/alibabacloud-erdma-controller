@@ -40,6 +40,9 @@ func getCredential(k8sClient client.Client) (credentials.Credential, error) {
 	case "oidc_role_arn":
 		credentialLogger.Info("using oidc_role_arn credential")
 		return credentials.NewCredential(new(credentials.Config).SetType("oidc_role_arn").SetSTSEndpoint(*stsEndpoint))
+	case "ecs_ram_role":
+		credentialLogger.Info("using ecs_ram_tole credential")
+		return credentials.NewCredential(new(credentials.Config).SetType("ecs_ram_role"))
 	case "ram_role_sts":
 		credentialLogger.Info("using ram_role_sts credential")
 		cred, err := getStsCredential(k8sClient)
