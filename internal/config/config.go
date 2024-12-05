@@ -120,5 +120,11 @@ func parseCredential(credentialPath string) (*types.Credentials, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal credential file: %v, %v", credentialPath, err)
 	}
+	if credential.StsSecretNS == "" {
+		credential.StsSecretNS = "kube-system"
+	}
+	if credential.StsSecretName == "" {
+		credential.StsSecretName = "addon.network.token"
+	}
 	return credential, nil
 }

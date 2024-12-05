@@ -18,8 +18,9 @@ package controller
 
 import (
 	"context"
-	"github.com/samber/lo"
 	"time"
+
+	"github.com/samber/lo"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
