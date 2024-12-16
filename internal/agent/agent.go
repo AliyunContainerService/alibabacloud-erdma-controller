@@ -19,9 +19,10 @@ var (
 )
 
 type Agent struct {
-	kubernetes      k8s.Kubernetes
-	driver          drivers.ERdmaDriver
-	allocAllDevices bool
+	kubernetes           k8s.Kubernetes
+	driver               drivers.ERdmaDriver
+	allocAllDevices      bool
+	devicepluginPreStart bool
 }
 
 func stackTriger() {
@@ -47,15 +48,16 @@ func stackTriger() {
 	signal.Notify(sigchain, syscall.SIGUSR1)
 }
 
-func NewAgent(preferDriver string, allocAllDevice bool) (*Agent, error) {
+func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart bool) (*Agent, error) {
 	kubernetes, err := k8s.NewKubernetes()
 	if err != nil {
 		return nil, err
 	}
 	return &Agent{
-		kubernetes:      kubernetes,
-		driver:          drivers.GetDriver(preferDriver),
-		allocAllDevices: allocAllDevice,
+		kubernetes:           kubernetes,
+		driver:               drivers.GetDriver(preferDriver),
+		allocAllDevices:      allocAllDevice,
+		devicepluginPreStart: devicepluginPreStart,
 	}, nil
 }
 
@@ -97,7 +99,10 @@ func (a *Agent) Run() error {
 		}
 	}
 	// 4. enable deviceplugin
-	devicePlugin := deviceplugin.NewERDMADevicePlugin(erdmaDevices, a.allocAllDevices)
+	devicePlugin, err := deviceplugin.NewERDMADevicePlugin(erdmaDevices, a.allocAllDevices, a.devicepluginPreStart)
+	if err != nil {
+		return fmt.Errorf("new erdma device plugin failed, err: %v", err)
+	}
 	devicePlugin.Serve()
 	// 5. todo watch & config smc-r and verbs devices
 	return nil

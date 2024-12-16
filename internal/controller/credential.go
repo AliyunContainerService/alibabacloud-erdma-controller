@@ -45,23 +45,19 @@ func getCredential(k8sClient client.Client) (credentials.Credential, error) {
 		return credentials.NewCredential(new(credentials.Config).SetType("ecs_ram_role"))
 	case "ram_role_sts":
 		credentialLogger.Info("using ram_role_sts credential")
-		cred, err := getStsCredential(k8sClient)
-		if err != nil {
-			return nil, err
-		}
-		return cred, nil
+		return getStsCredential(k8sClient), nil
 	default:
 		return nil, fmt.Errorf("unsupported credential type: %s", credType)
 	}
 }
 
-func getStsCredential(k8sClient client.Client) (credentials.Credential, error) {
+func getStsCredential(k8sClient client.Client) credentials.Credential {
 	cred := &stsTokenCredential{
 		k8sClient:  k8sClient,
 		secretNs:   config.GetCredential().StsSecretNS,
 		SecretName: config.GetCredential().StsSecretName,
 	}
-	return cred, nil
+	return cred
 }
 
 type stsTokenCredential struct {

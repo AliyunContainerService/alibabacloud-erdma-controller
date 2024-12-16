@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"time"
+
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/samber/lo"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -11,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"

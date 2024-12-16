@@ -51,7 +51,7 @@ config:
   manageNonOwnedENIs: true
   clusterDomain: ""
   enableDevicePlugin: true
-  enableWebhook: true
+  enableWebhook: false
   enableInitContainerInject: true
   smcInitImage: ""
 

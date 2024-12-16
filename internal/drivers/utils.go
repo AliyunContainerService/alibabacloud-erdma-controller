@@ -164,6 +164,21 @@ func ConfigForNetDevice(pnet string, netDevice string) error {
 	return nil
 }
 
+func ConfigForNetnsNetDevice(pnet string, netDevice string, netns string) error {
+	output, err := exec.Command("nsenter", "-n/proc/1/root/"+netns, "--", smcPnet, "-s").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to get smc-pnet stat for net device: %v, output: %v", err, string(output))
+	}
+	if bytes.Contains(output, []byte(netDevice)) {
+		return nil
+	}
+	output, err = exec.Command("nsenter", "-n/proc/1/root/"+netns, "--", smcPnet, "-a", pnet, "-I", netDevice).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to config smc-pnet net device: %v, output: %v", err, string(output))
+	}
+	return nil
+}
+
 func GetERDMANumaNode(info *netlink.RdmaLink) (int64, error) {
 	devNumaPath := path.Join("/sys/class/infiniband/", info.Attrs.Name, "device/numa_node")
 	numaStr, err := os.ReadFile(devNumaPath)

@@ -37,6 +37,9 @@ spec:
             {{ if .Values.agent.allocateAllDevices }}
             - --allocate-all-devices
             {{ end }}
+            {{ if not .Values.config.enableWebhook }}
+            - --deviceplugin-prestart-container
+            {{ end }}
           image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
           env:
@@ -51,10 +54,20 @@ spec:
             name: lib-modules
           - mountPath: /var/lib/kubelet/device-plugins
             name: device-plugin
+          - mountPath: /run/containerd
+            name: cri-dir
+          - mountPath: /var/lib/kubelet/pod-resources/
+            name: pod-resource-dir
       volumes:
+      - name: pod-resource-dir
+        hostPath:
+          path: /var/lib/kubelet/pod-resources/
       - name: lib-modules
         hostPath:
           path: /lib/modules
+      - name: cri-dir
+        hostPath:
+          path: /run/containerd
       - name: device-plugin
         hostPath:
           path: /var/lib/kubelet/device-plugins
