@@ -17,9 +17,9 @@ spec:
         app: erdma
     spec:
       containers:
-      - image: nginx
-        imagePullPolicy: Always
-        name: erdma
-        resources:
-          limits:
-            aliyun/erdma: 1
+        - image: nginx
+          imagePullPolicy: Always
+          name: erdma
+          resources:
+            limits:
+              aliyun/erdma: 1

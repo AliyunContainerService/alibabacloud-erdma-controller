@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/cert"
+
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/config"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	erdmaWebhook "github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/webhook"
@@ -99,15 +100,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = cert.SyncCert(context.Background(), directClient, config.GetConfig().ControllerNamespace,
-		config.GetConfig().ControllerName, config.GetConfig().ClusterDomain, config.GetConfig().CertDir)
-	if err != nil {
-		panic(err)
+	var webhookServer webhook.Server
+	if config.GetConfig().EnableWebhook != nil && *config.GetConfig().EnableWebhook {
+		err = cert.SyncCert(context.Background(), directClient, config.GetConfig().ControllerNamespace,
+			config.GetConfig().ControllerName, config.GetConfig().ClusterDomain, config.GetConfig().CertDir)
+		if err != nil {
+			panic(err)
+		}
+		webhookServer = webhook.NewServer(webhook.Options{
+			CertDir: config.GetConfig().CertDir,
+		})
 	}
-
-	webhookServer := webhook.NewServer(webhook.Options{
-		CertDir: config.GetConfig().CertDir,
-	})
 
 	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
@@ -185,7 +188,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	mgr.GetWebhookServer().Register("/mutating", erdmaWebhook.MutatingHook(mgr.GetClient()))
+	if webhookServer != nil {
+		mgr.GetWebhookServer().Register("/mutating", erdmaWebhook.MutatingHook(mgr.GetClient()))
+	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

@@ -135,7 +135,7 @@ func (e *EriClient) CreateEriForInstance(instanceInfo *ecs.DescribeInstancesResp
 			eris = append(eris, eri)
 		}
 	}
-	if len(cardIndex) > 0 {
+	for len(cardIndex) > 0 {
 		eriResp, err := e.client.CreateNetworkInterface(&ecs.CreateNetworkInterfaceRequest{
 			NetworkInterfaceName:        ptr.To(fmt.Sprintf("eri-%s-%d", *instanceInfo.InstanceId, cardIndex[0])),
 			NetworkInterfaceTrafficMode: ptr.To(trafficModeRDMA),

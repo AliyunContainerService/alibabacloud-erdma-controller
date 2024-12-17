@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
@@ -30,28 +31,37 @@ const (
 
 // ERDMADevicePlugin implements the Kubernetes device plugin API
 type ERDMADevicePlugin struct {
-	socket          string
-	server          *grpc.Server
-	stop            chan struct{}
-	devices         map[string]*types.ERdmaDeviceInfo
-	allocAllDevices bool
+	socket               string
+	server               *grpc.Server
+	stop                 chan struct{}
+	devices              map[string]*types.ERdmaDeviceInfo
+	allocAllDevices      bool
+	devicepluginPreStart bool
 	sync.Locker
 }
 
 // NewERDMADevicePlugin returns an initialized ERDMADevicePlugin
-func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices bool) *ERDMADevicePlugin {
+func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices bool, devicepluginPreStart bool) (*ERDMADevicePlugin, error) {
 	devMap := map[string]*types.ERdmaDeviceInfo{}
 	for _, d := range devices {
 		devMap[d.Name] = d
 	}
+	if devicepluginPreStart {
+		err := initCriClient(runtimeEndpoints)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	pluginEndpoint := fmt.Sprintf(dpSocketPath, time.Now().Unix())
 	return &ERDMADevicePlugin{
-		socket:          pluginEndpoint,
-		devices:         devMap,
-		Locker:          &sync.Mutex{},
-		allocAllDevices: allocAllDevices,
-		stop:            make(chan struct{}, 1),
-	}
+		socket:               pluginEndpoint,
+		devices:              devMap,
+		Locker:               &sync.Mutex{},
+		allocAllDevices:      allocAllDevices,
+		devicepluginPreStart: devicepluginPreStart,
+		stop:                 make(chan struct{}, 1),
+	}, nil
 }
 
 // dial establishes the gRPC communication with the registered device plugin.
@@ -60,7 +70,7 @@ func dial(unixSocketPath string, timeout time.Duration) (*grpc.ClientConn, func(
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 			fmt.Printf("dial unix socket: %s\n", addr)
 			return net.DialTimeout("unix", addr, timeout)
-		}))
+		}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1024*1024*16)))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -101,11 +111,61 @@ func (m *ERDMADevicePlugin) Start() error {
 
 // GetDevicePluginOptions return device plugin options
 func (m *ERDMADevicePlugin) GetDevicePluginOptions(context.Context, *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
-	return &pluginapi.DevicePluginOptions{}, nil
+	return &pluginapi.DevicePluginOptions{PreStartRequired: m.devicepluginPreStart}, nil
 }
 
 // PreStartContainer return container prestart hook
-func (m *ERDMADevicePlugin) PreStartContainer(context.Context, *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
+func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
+	klog.Infof("Prestart Request Devices: %v", req.DevicesIDs)
+	if len(req.DevicesIDs) == 0 {
+		return &pluginapi.PreStartContainerResponse{}, nil
+	}
+	pod, found, err := getDevPod(req.DevicesIDs[0])
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return &pluginapi.PreStartContainerResponse{}, fmt.Errorf("can not find pod %s", pod)
+	}
+	podConfig, err := getPodConfig(pod)
+	if err != nil {
+		return &pluginapi.PreStartContainerResponse{}, fmt.Errorf("can not get pod config %s, err, %v", pod, err)
+	}
+	if podConfig.SMCR {
+		configSysctl := func(sysctl string) error {
+			output, err := exec.Command("nsenter", []string{
+				"-n/proc/1/root/" + podConfig.Netns,
+				"sysctl", "-w", sysctl,
+			}...).CombinedOutput()
+
+			if err != nil {
+				return fmt.Errorf("can not exec nsenter %s, err: %v", output, err)
+			}
+			return nil
+		}
+		err = configSysctl("net.smc.tcp2smc=1")
+		if err != nil {
+			return &pluginapi.PreStartContainerResponse{}, err
+		}
+		err = configSysctl("net.ipv6.conf.all.disable_ipv6=1")
+		if err != nil {
+			return &pluginapi.PreStartContainerResponse{}, err
+		}
+		var erdmaInfo *types.ERdmaDeviceInfo
+
+		for _, devID := range req.DevicesIDs {
+			devPath := strings.Split(devID, "/")
+			if len(devPath) <= 1 {
+				continue
+			}
+			erdmaInfo = m.devices[devPath[0]]
+		}
+		err = drivers.ConfigForNetnsNetDevice(drivers.PNetIDFromDevice(erdmaInfo), "eth0", podConfig.Netns)
+		if err != nil {
+			return &pluginapi.PreStartContainerResponse{}, err
+		}
+	}
+
 	return &pluginapi.PreStartContainerResponse{}, nil
 }
 
@@ -282,6 +342,9 @@ func (m *ERDMADevicePlugin) watchKubeletRestart() {
 					Version:      pluginapi.Version,
 					Endpoint:     path.Base(m.socket),
 					ResourceName: types.ResourceName,
+					Options: &pluginapi.DevicePluginOptions{
+						PreStartRequired: m.devicepluginPreStart,
+					},
 				},
 			)
 			if err != nil {
@@ -306,6 +369,9 @@ func (m *ERDMADevicePlugin) Serve() {
 			Version:      pluginapi.Version,
 			Endpoint:     path.Base(m.socket),
 			ResourceName: types.ResourceName,
+			Options: &pluginapi.DevicePluginOptions{
+				PreStartRequired: m.devicepluginPreStart,
+			},
 		},
 	)
 	if err != nil {
