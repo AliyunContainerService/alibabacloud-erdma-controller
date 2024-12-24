@@ -58,6 +58,8 @@ spec:
             name: cri-dir
           - mountPath: /var/lib/kubelet/pod-resources/
             name: pod-resource-dir
+          - mountPath: /var/run/
+            name: docker
       volumes:
       - name: pod-resource-dir
         hostPath:
@@ -71,6 +73,9 @@ spec:
       - name: device-plugin
         hostPath:
           path: /var/lib/kubelet/device-plugins
+      - name: docker
+        hostPath:
+          path: /var/run/
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

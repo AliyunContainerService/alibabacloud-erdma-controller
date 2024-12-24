@@ -13,13 +13,18 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
+
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/api/consts"
+	"github.com/docker/docker/client"
 	"github.com/samber/lo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	k8sType "k8s.io/apimachinery/pkg/types"
+
 	"k8s.io/klog/v2"
 
 	internalapi "k8s.io/cri-api/pkg/apis"
@@ -54,6 +59,48 @@ type sandboxInfoSpec struct {
 }
 
 func getPodConfig(pod k8sType.NamespacedName) (*podConfig, error) {
+	if dockerClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		podSandbox, err := dockerClient.ContainerList(ctx, types.ContainerListOptions{
+			Filters: filters.NewArgs(
+				filters.Arg("label", "io.kubernetes.docker.type=podsandbox"),
+				filters.Arg("label", "io.kubernetes.pod.name="+pod.Name),
+				filters.Arg("label", "io.kubernetes.pod.namespace="+pod.Namespace),
+			),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("get pod sandbox list: %w", err)
+		}
+		if len(podSandbox) == 0 {
+			return nil, fmt.Errorf("pod sandbox not found")
+		}
+		inspectCtx, inspectCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer inspectCancel()
+		sandboxInfo, err := dockerClient.ContainerInspect(inspectCtx, podSandbox[0].ID)
+		if err != nil {
+			return nil, fmt.Errorf("get pod sandbox inspect: %w", err)
+		}
+		if sandboxInfo.State == nil || sandboxInfo.State.Pid == 0 {
+			return nil, fmt.Errorf("pod sandbox state not expect: %v", sandboxInfo.State)
+		}
+		config := &podConfig{
+			Netns: fmt.Sprintf("/proc/%d/ns/net", sandboxInfo.State.Pid),
+		}
+		if sandboxInfo.Config == nil || sandboxInfo.Config.Labels == nil {
+			return config, nil
+		}
+		smcConfig, ok := sandboxInfo.Config.Labels["annotation."+consts.PodAnnotationSMCR]
+		if !ok {
+			return config, nil
+		}
+		config.SMCR, err = strconv.ParseBool(smcConfig)
+		if err != nil {
+			return nil, fmt.Errorf("pod sandbox state not expect: %v", sandboxInfo.State)
+		}
+		return config, nil
+	}
+
 	sandboxs, err := criClient.ListPodSandbox(nil)
 	if err != nil {
 		return nil, err
@@ -97,16 +144,27 @@ func getPodConfig(pod k8sType.NamespacedName) (*podConfig, error) {
 }
 
 var (
-	criClient internalapi.RuntimeService
+	criClient    internalapi.RuntimeService
+	dockerClient *client.Client
 )
 
 const (
 	unixProtocol   = "unix"
 	maxMsgSize     = 1024 * 1024 * 16
 	kubeAPIVersion = "0.1.0"
+
+	dockerShimSocket = "/var/run/dockershim.sock"
 )
 
-var runtimeEndpoints = []string{"/var/run/dockershim.sock", "/run/containerd/containerd.sock", "/run/k3s/containerd/containerd.sock", "/var/run/cri-dockerd.sock"}
+var runtimeEndpoints = []string{dockerShimSocket, "/run/containerd/containerd.sock", "/run/k3s/containerd/containerd.sock", "/var/run/cri-dockerd.sock"}
+
+func initDockerClient() (err error) {
+	dockerClient, err = client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 func initCriClient(eps []string) (err error) {
 	if criClient != nil {
@@ -121,6 +179,9 @@ func initCriClient(eps []string) (err error) {
 		if err != nil {
 			return fmt.Errorf("connect cri sock %s error: %w", sock, err)
 		}
+		if sock == dockerShimSocket {
+			return initDockerClient()
+		}
 		return
 	}
 
@@ -131,6 +192,12 @@ func initCriClient(eps []string) (err error) {
 		criClient, err = NewRemoteRuntimeService(candidate, 10*time.Second)
 		if err != nil {
 			continue
+		}
+		if candidate == dockerShimSocket {
+			err = initDockerClient()
+			if err != nil {
+				continue
+			}
 		}
 		return
 	}
