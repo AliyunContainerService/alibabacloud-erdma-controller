@@ -3,11 +3,12 @@ package deviceplugin
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/samber/lo"
 	k8sType "k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubelet/pkg/apis/podresources/v1"
-	"time"
+	v1 "k8s.io/kubelet/pkg/apis/podresources/v1"
 )
 
 const (

@@ -168,7 +168,7 @@ func initDockerClient() (err error) {
 
 func initCriClient(eps []string) (err error) {
 	if criClient != nil {
-		return
+		return nil
 	}
 
 	if sock, ok := os.LookupEnv("RUNTIME_SOCK"); ok {
@@ -182,7 +182,7 @@ func initCriClient(eps []string) (err error) {
 		if sock == dockerShimSocket {
 			return initDockerClient()
 		}
-		return
+		return err
 	}
 
 	for _, candidate := range eps {
@@ -199,7 +199,7 @@ func initCriClient(eps []string) (err error) {
 				continue
 			}
 		}
-		return
+		return err
 	}
 
 	return fmt.Errorf("cannot find valid cri sock in %s", strings.Join(eps, ","))
@@ -266,7 +266,7 @@ func getConnection(ctx context.Context, endPoint string) (*grpc.ClientConn, erro
 	if err != nil {
 		return nil, err
 	}
-	conn, err = grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock(), grpc.WithContextDialer(dialer), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMsgSize)))
+	conn, err = grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock(), grpc.WithContextDialer(dialer), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMsgSize))) //nolint:staticcheck
 	if err != nil {
 		return nil, fmt.Errorf("connect endpoint '%s', make sure you are running as root and the endpoint has been started", endPoint)
 

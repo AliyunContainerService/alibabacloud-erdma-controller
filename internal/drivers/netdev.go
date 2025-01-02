@@ -52,7 +52,7 @@ func EnsureNetDevice(link netlink.Link, eri *types.ERI) error {
 		defer func() {
 			// set link down to make sure reconfig on crashLoop
 			if err != nil {
-				netlink.LinkSetDown(link)
+				netlink.LinkSetDown(link) // nolint:errcheck
 			}
 		}()
 		err = ensureAddress(link, conf)
@@ -105,7 +105,7 @@ func ensureAddress(link netlink.Link, conf *netConf) error {
 	// remove auto create route, fixme when netlink support noprefixroute
 	autoCreateRouteCidr := *conf.ipAddr
 	autoCreateRouteCidr.IP = autoCreateRouteCidr.IP.Mask(autoCreateRouteCidr.Mask)
-	netlink.RouteDel(&netlink.Route{Dst: &autoCreateRouteCidr, LinkIndex: link.Attrs().Index})
+	netlink.RouteDel(&netlink.Route{Dst: &autoCreateRouteCidr, LinkIndex: link.Attrs().Index}) // nolint:errcheck
 	return nil
 }
 
@@ -199,7 +199,7 @@ func ensureRoutes(link netlink.Link, routes []*route) error {
 	return nil
 }
 
-func genRoutesForAddr(ip, gateway net.IP, cidr *net.IPNet) ([]*route, error) {
+func genRoutesForAddr(gateway net.IP, cidr *net.IPNet) ([]*route, error) {
 	existRoutes, err := netlink.RouteList(nil, netlink.FAMILY_V4)
 	if err != nil {
 		return nil, err
@@ -269,7 +269,7 @@ func getNetConfFromMetadata(mac string) (*netConf, error) {
 			Mask: ipNet.Mask,
 		},
 	}
-	routes, err := genRoutesForAddr(ip, gateway, ipNet)
+	routes, err := genRoutesForAddr(gateway, ipNet)
 	if err != nil {
 		return nil, err
 	}

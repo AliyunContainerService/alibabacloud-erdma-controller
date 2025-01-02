@@ -120,7 +120,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		_ = wait.PollWithContext(ctx, 500*time.Millisecond, 2*time.Second, func(ctx context.Context) (bool, error) {
+		_ = wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 2*time.Second, true, func(ctx context.Context) (bool, error) {
 			dev := &networkv1.ERdmaDevice{}
 			err := r.Client.Get(ctx, k8stypes.NamespacedName{
 				Name: erdmaDevice.Name,

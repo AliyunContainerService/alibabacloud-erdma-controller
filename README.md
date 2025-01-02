@@ -1,6 +1,5 @@
 # alibabacloud-erdma-controller
-
-Kubernetes controller for alibabacloud erdma resource 
+Kubernetes controller for alibabacloud erdma resource
 
 ## Description
 Dynamic configure erdma devices on kubernetes nodes, and automatically inject erdma-accelerated networks for Kubernetes Pods.
@@ -41,7 +40,7 @@ alibabacloud-erdma-controller need following permissions:
 #### prepare configuration
 prepare a values.yaml file with the following content to authorize controller to access erdma API:
 ##### use rrsa authorization
-```
+```yaml
 credentials:
   type: "oidc_role_arn"
 serviceAccount:
@@ -57,7 +56,7 @@ credentials:
   accessKeyID: "{access key}"
   accessKeySecret: "{access key secret}"
 ```
-#### helm install:
+#### helm install
 ```sh
 helm install -f values.yaml --namespace kube-system alibaba-erdma-controller deploy/helm/
 ```
@@ -78,10 +77,10 @@ kubectl get node -o yaml | grep aliyun/erdma
 
 ### Using ERDMA Accelerated Network
 #### Pod Configurations to Enable ERDMA Accelerated Network
-* add `aliyun/erdma` resource in pod spec # config erdma devices for pod 
+* add `aliyun/erdma` resource in pod spec # config erdma devices for pod
 * `network.alibabacloud.com/erdma-smcr: "true"` # config smcr for pod, dynamicially replace tcp connection to erdma, need `network.alibabacloud.com/erdma` enabled first.
 
-#### Example:
+#### Example
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -140,7 +139,9 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+```text
+http://www.apache.org/licenses/LICENSE-2.0
+```
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
