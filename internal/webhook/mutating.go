@@ -33,14 +33,14 @@ func MutatingHook(client client.Client) *webhook.Admission {
 			}
 			switch req.Kind.Kind {
 			case "Pod":
-				return podWebhook(ctx, &req, client)
+				return podWebhook(ctx, &req)
 			}
 			return webhook.Allowed("not care")
 		}),
 	}
 }
 
-func podWebhook(_ context.Context, req *webhook.AdmissionRequest, client client.Client) webhook.AdmissionResponse {
+func podWebhook(_ context.Context, req *webhook.AdmissionRequest) webhook.AdmissionResponse {
 	original := &corev1.Pod{}
 	err := json.Unmarshal(req.Object.Raw, original)
 	if err != nil {

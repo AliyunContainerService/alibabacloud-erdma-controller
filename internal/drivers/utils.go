@@ -41,6 +41,7 @@ func isContainerOS() bool {
 	return err == nil
 }
 
+//nolint:unparam
 func hostExec(cmd string) (string, error) {
 	output, err := exec.Command("nsenter", "-t", "1", "-m", "--", "bash", "-c", cmd).CombinedOutput()
 	if err != nil {
