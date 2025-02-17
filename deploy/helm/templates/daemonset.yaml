@@ -27,7 +27,12 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
-            privileged: true
+            capabilities:
+              add:
+                - SYS_MODULE
+                - SYS_ADMIN
+                - NET_ADMIN
+                - SYS_PTRACE
           command:
             - /usr/local/bin/agent
             {{ if .Values.agent.preferDriver }}
@@ -59,7 +64,7 @@ spec:
           - mountPath: /var/lib/kubelet/pod-resources/
             name: pod-resource-dir
           - mountPath: /var/run/
-            name: docker
+            name: var-run
       volumes:
       - name: pod-resource-dir
         hostPath:
@@ -70,10 +75,12 @@ spec:
       - name: cri-dir
         hostPath:
           path: /run/containerd
+          type: "Directory"
       - name: device-plugin
         hostPath:
           path: /var/lib/kubelet/device-plugins
-      - name: docker
+          type: "Directory"
+      - name: var-run
         hostPath:
           path: /var/run/
       {{- with .Values.nodeSelector }}

@@ -143,6 +143,12 @@ func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginap
 			}
 			return nil
 		}
+		ensureSysctlFSRW, err := exec.Command("bash", "-c",
+			"mount | grep ' /proc/sys ' | grep rw || mount -o remount,rw /proc/sys").CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("can not ensure sysctl fs rw permission %s, err: %v", ensureSysctlFSRW, err)
+		}
+
 		err = configSysctl("net.smc.tcp2smc=1")
 		if err != nil {
 			return &pluginapi.PreStartContainerResponse{}, err
