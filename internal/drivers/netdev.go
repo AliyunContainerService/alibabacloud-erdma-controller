@@ -77,7 +77,7 @@ func EnsureNetDevice(link netlink.Link, eri *types.ERI) error {
 			}
 		}
 		if !addrConfig {
-			driverLog.Error(fmt.Errorf("ip address not found in netlink"), "ip", conf.ipAddr, "link", eri.MAC)
+			driverLog.Error(fmt.Errorf("ip address not found in netlink, check the terway ENI writelist config: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/configure-a-whitelist-for-an-eni"), "ip address config not expect", "ip", conf.ipAddr, "link", eri.MAC)
 		}
 		return nil
 	}
