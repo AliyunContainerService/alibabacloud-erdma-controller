@@ -99,7 +99,7 @@ func (a *Agent) Run() error {
 		}
 	}
 	// 4. enable deviceplugin
-	devicePlugin, err := deviceplugin.NewERDMADevicePlugin(erdmaDevices, a.allocAllDevices, a.devicepluginPreStart)
+	devicePlugin, err := deviceplugin.NewERDMADevicePlugin(erdmaDevices, a.allocAllDevices, a.devicepluginPreStart, a.driver.Name() == "default")
 	if err != nil {
 		return fmt.Errorf("new erdma device plugin failed, err: %v", err)
 	}
