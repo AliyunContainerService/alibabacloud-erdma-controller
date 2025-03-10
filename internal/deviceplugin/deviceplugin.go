@@ -37,11 +37,12 @@ type ERDMADevicePlugin struct {
 	devices              map[string]*types.ERdmaDeviceInfo
 	allocAllDevices      bool
 	devicepluginPreStart bool
+	allocRdmaCM          bool
 	sync.Locker
 }
 
 // NewERDMADevicePlugin returns an initialized ERDMADevicePlugin
-func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices bool, devicepluginPreStart bool) (*ERDMADevicePlugin, error) {
+func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices, devicepluginPreStart, allocRdmaCM bool) (*ERDMADevicePlugin, error) {
 	devMap := map[string]*types.ERdmaDeviceInfo{}
 	for _, d := range devices {
 		devMap[d.Name] = d
@@ -60,6 +61,7 @@ func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices bool
 		Locker:               &sync.Mutex{},
 		allocAllDevices:      allocAllDevices,
 		devicepluginPreStart: devicepluginPreStart,
+		allocRdmaCM:          allocRdmaCM,
 		stop:                 make(chan struct{}, 1),
 	}, nil
 }
@@ -292,6 +294,13 @@ func (m *ERDMADevicePlugin) Allocate(ctx context.Context, r *pluginapi.AllocateR
 				}
 			})...)
 		})
+		if m.allocRdmaCM {
+			devicePaths = append(devicePaths, &pluginapi.DeviceSpec{
+				ContainerPath: "/dev/infiniband/rdma_cm",
+				HostPath:      "/dev/infiniband/rdma_cm",
+				Permissions:   "rw",
+			})
+		}
 		if len(devicePaths) > 0 {
 			response.ContainerResponses = append(response.ContainerResponses,
 				&pluginapi.ContainerAllocateResponse{
