@@ -27,6 +27,7 @@ import (
 
 const (
 	dpSocketPath = "/var/lib/kubelet/device-plugins/%d-erdma.sock"
+	rdmaCMDevice = "/dev/infiniband/rdma_cm"
 )
 
 // ERDMADevicePlugin implements the Kubernetes device plugin API
@@ -55,6 +56,12 @@ func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices, dev
 	}
 
 	pluginEndpoint := fmt.Sprintf(dpSocketPath, time.Now().Unix())
+	if allocRdmaCM {
+		_, err := os.Stat(rdmaCMDevice)
+		if err != nil {
+			allocRdmaCM = false
+		}
+	}
 	return &ERDMADevicePlugin{
 		socket:               pluginEndpoint,
 		devices:              devMap,
@@ -296,8 +303,8 @@ func (m *ERDMADevicePlugin) Allocate(ctx context.Context, r *pluginapi.AllocateR
 		})
 		if m.allocRdmaCM {
 			devicePaths = append(devicePaths, &pluginapi.DeviceSpec{
-				ContainerPath: "/dev/infiniband/rdma_cm",
-				HostPath:      "/dev/infiniband/rdma_cm",
+				ContainerPath: rdmaCMDevice,
+				HostPath:      rdmaCMDevice,
 				Permissions:   "rw",
 			})
 		}
