@@ -4,12 +4,10 @@ package drivers
 
 import (
 	"fmt"
-	"io"
 	"net"
-	"net/http"
-	"strings"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/utils"
 	"github.com/samber/lo"
 	"github.com/vishvananda/netlink"
 )
@@ -237,7 +235,7 @@ func genRoutesForAddr(gateway net.IP, cidr *net.IPNet) ([]*route, error) {
 }
 
 func getNetConfFromMetadata(mac string) (*netConf, error) {
-	addr, err := getStrFromMetadata(fmt.Sprintf(ipUrl, mac))
+	addr, err := utils.GetStrFromMetadata(fmt.Sprintf(ipUrl, mac))
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +243,7 @@ func getNetConfFromMetadata(mac string) (*netConf, error) {
 	if ip == nil {
 		return nil, fmt.Errorf("invalid ip address: %s", addr)
 	}
-	cidr, err := getStrFromMetadata(fmt.Sprintf(cidrURL, mac))
+	cidr, err := utils.GetStrFromMetadata(fmt.Sprintf(cidrURL, mac))
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +252,7 @@ func getNetConfFromMetadata(mac string) (*netConf, error) {
 		return nil, fmt.Errorf("invalid cidr: %s", cidr)
 	}
 
-	gw, err := getStrFromMetadata(fmt.Sprintf(gatewayURL, mac))
+	gw, err := utils.GetStrFromMetadata(fmt.Sprintf(gatewayURL, mac))
 	if err != nil {
 		return nil, err
 	}
@@ -275,28 +273,4 @@ func getNetConfFromMetadata(mac string) (*netConf, error) {
 	}
 	conf.routes = routes
 	return conf, nil
-}
-
-func getStrFromMetadata(url string) (string, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("error get url: %s from metaserver. %w", url, err)
-	}
-	//nolint:errcheck
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return "", fmt.Errorf("error get url: %s from metaserver, code: %v, %v", url, resp.StatusCode, "Not Found")
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		return "", fmt.Errorf("error get url: %s from metaserver, code: %v", url, resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	result := strings.Split(string(body), "\n")
-	trimResult := strings.Trim(result[0], "/")
-	return trimResult, nil
 }

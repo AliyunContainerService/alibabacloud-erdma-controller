@@ -3,11 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"strings"
 
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/utils"
 	"k8s.io/utils/ptr"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
@@ -29,27 +27,7 @@ var (
 
 func getRegion() (string, error) {
 	url := regionIDAddr
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("error get url: %s from metaserver. %w", url, err)
-	}
-	//nolint:errcheck
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return "", fmt.Errorf("error get url: %s from metaserver, code: %v, %v", url, resp.StatusCode, "Not Found")
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		return "", fmt.Errorf("error get url: %s from metaserver, code: %v", url, resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	result := strings.Split(string(body), "\n")
-	trimResult := strings.Trim(result[0], "/")
-	return trimResult, nil
+	return utils.GetStrFromMetadata(url)
 }
 
 func InitConfig(configPath, credentialPath string) error {
