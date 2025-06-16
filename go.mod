@@ -9,6 +9,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
 	github.com/samber/lo v1.47.0
+	github.com/stretchr/testify v1.9.0
 	github.com/vishvananda/netlink v1.3.0
 	golang.org/x/net v0.26.0
 	google.golang.org/grpc v1.65.0
@@ -23,6 +24,7 @@ require (
 
 require (
 	github.com/morikuni/aec v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
 )
 
