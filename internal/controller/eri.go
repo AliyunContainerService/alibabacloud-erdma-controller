@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	networkv1 "github.com/AliyunContainerService/alibabacloud-erdma-controller/api/v1"
@@ -32,7 +33,7 @@ const (
 type EriClient struct {
 	client          *ecs.Client
 	regionID        string
-	managedNonOwned bool
+	ManagedNonOwned bool
 }
 
 func NewEriClient(k8sClient client.Client) (*EriClient, error) {
@@ -40,8 +41,12 @@ func NewEriClient(k8sClient client.Client) (*EriClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	network := "tcp"
+	if os.Getenv("PUBLIC_NETWORK") == "true" {
+		network = "public"
+	}
 
-	ecsEndpoint, err := service.GetEndpointRules(tea.String("ecs"), tea.String(config.GetConfig().Region), tea.String("regional"), tea.String("vpc"), nil)
+	ecsEndpoint, err := service.GetEndpointRules(tea.String("ecs"), tea.String(config.GetConfig().Region), tea.String("regional"), tea.String(network), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +55,7 @@ func NewEriClient(k8sClient client.Client) (*EriClient, error) {
 		UserAgent:    ptr.To("AlibabaCloud/ERdma-Controller/0.1"),
 		Credential:   cred,
 		EndpointType: tea.String("regional"),
-		Network:      tea.String("vpc"),
+		Network:      tea.String(network),
 		Endpoint:     ecsEndpoint,
 	})
 	if err != nil {
@@ -58,7 +63,7 @@ func NewEriClient(k8sClient client.Client) (*EriClient, error) {
 	}
 	return &EriClient{
 		regionID:        config.GetConfig().Region,
-		managedNonOwned: config.GetConfig().ManageNonOwnedERIs,
+		ManagedNonOwned: config.GetConfig().ManageNonOwnedERIs,
 		client:          client,
 	}, nil
 }
@@ -173,7 +178,7 @@ func (e *EriClient) ConvertPrimaryENI(primaryENI string, queuePair int) error {
 		NetworkInterfaceTrafficConfig: &ecs.ModifyNetworkInterfaceAttributeRequestNetworkInterfaceTrafficConfig{
 			NetworkInterfaceTrafficMode: ptr.To(trafficModeRDMA),
 			// todo: not support dynamic set queue pair number
-			// QueuePairNumber:             ptr.To(int32(queuePair)),
+			QueuePairNumber: ptr.To(int32(queuePair)),
 		},
 	}); err != nil {
 		return err
@@ -218,9 +223,13 @@ func (e *EriClient) SelectERIs(instanceID string) ([]*types.ERI, error) {
 			cardCount = int(min(*instanceType.NetworkCardQuantity, eriQuantity))
 		}
 		queuePairCount = int(*instanceType.QueuePairNumber)
+		// GPU instance max queue pair number is card count * queue pair number
+		if instanceType.GPUAmount != nil && *instanceType.GPUAmount > 0 {
+			queuePairCount = int(*instanceType.QueuePairNumber * int32(cardCount))
+		}
 	}
 
-	existENIs, err := e.client.DescribeNetworkInterfaces(&ecs.DescribeNetworkInterfacesRequest{
+	describeENIResponse, err := e.client.DescribeNetworkInterfaces(&ecs.DescribeNetworkInterfacesRequest{
 		RegionId:   ptr.To(e.regionID),
 		InstanceId: ptr.To(instanceID),
 		PageSize:   ptr.To(int32(100)),
@@ -228,45 +237,88 @@ func (e *EriClient) SelectERIs(instanceID string) ([]*types.ERI, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot found node eni: %v", err)
 	}
+	existENIs := describeENIResponse.Body.NetworkInterfaceSets.NetworkInterfaceSet
+	selectEriList, needCreate, queuePairNumberConfig, err := e.SelectEriFromExist(existENIs, queuePairCount, cardCount)
+	if err != nil {
+		return nil, fmt.Errorf("cannot generate eri config list from exist enis: %v", err)
+	}
+	eris, err := e.CreateEriForInstance(instanceResp.Body.Instances.Instance[0], needCreate, queuePairNumberConfig)
+	if err != nil {
+		return nil, err
+	}
+	selectEriList = append(selectEriList, eris...)
+
+	return selectEriList, nil
+}
+
+func (e *EriClient) SelectEriFromExist(existENIs []*ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, queuePairCount, cardCount int) ([]*types.ERI, []int, int, error) {
+	var existQueuePairCount int
+	existERIs := lo.Filter(existENIs, func(item *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, _ int) bool {
+		eri := item.NetworkInterfaceTrafficMode != nil && *item.NetworkInterfaceTrafficMode == trafficModeRDMA
+		if eri {
+			existQueuePairCount += int(*item.QueuePairNumber)
+		}
+		return eri
+	})
+	eriLog.Info("exist eri", "existERIs", lo.Map(existERIs, func(item *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, _ int) *types.ERI {
+		return toEri(item, 0)
+	}), "existQueuePairCount", existQueuePairCount, "osMaxQueuePairCount", queuePairCount, "cardCount", cardCount)
+
 	var (
 		selectedENIs []*ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet
 		cardIndexENI = map[int]*types.ERI{}
 	)
-	for _, eni := range existENIs.Body.NetworkInterfaceSets.NetworkInterfaceSet {
-		if eni.Type != nil && *eni.Type == "Primary" {
-			selectedENIs = append(selectedENIs, eni)
-			cardIndexENI[0] = toEri(eni, queuePairCount/cardCount)
-		} else {
-			if eni.NetworkInterfaceTrafficMode != nil && *eni.NetworkInterfaceTrafficMode == trafficModeRDMA && e.OwnENI(eni) {
-				eniIndex := eniCardIndex(eni)
-				if _, ok := cardIndexENI[eniIndex]; !ok {
-					cardIndexENI[eniIndex] = toEri(eni, queuePairCount/cardCount)
-					selectedENIs = append(selectedENIs, eni)
-				}
+
+	for _, eri := range existERIs {
+		if !e.OwnENI(eri) {
+			continue
+		}
+		eniIndex := eniCardIndex(eri)
+		if _, ok := cardIndexENI[eniIndex]; !ok {
+			cardIndexENI[eniIndex] = toEri(eri, 0)
+			selectedENIs = append(selectedENIs, eri)
+		}
+	}
+	var needCreateOrConvert []int
+	if existQueuePairCount <= queuePairCount {
+		for i := 0; i < cardCount; i++ {
+			if _, ok := cardIndexENI[i]; !ok {
+				needCreateOrConvert = append(needCreateOrConvert, i)
 			}
 		}
 	}
-	if len(cardIndexENI) == 0 {
-		return nil, fmt.Errorf("cannot found node primary eni")
+
+	var remainQueuePairCountPerCardIndex int
+	if len(needCreateOrConvert) > 0 {
+		remainQueuePairCountPerCardIndex = (queuePairCount - existQueuePairCount) / len(needCreateOrConvert)
+		if remainQueuePairCountPerCardIndex > 0 {
+			if _, ok := cardIndexENI[0]; !ok {
+				// if cardIndex 0 not bind ENI, using primary ENI as cardIndex 0 ENI
+				for _, eni := range existENIs {
+					if eni.Type != nil && *eni.Type == "Primary" {
+						selectedENIs = append(selectedENIs, eni)
+						cardIndexENI[0] = toEri(eni, remainQueuePairCountPerCardIndex)
+						cardIndex0Idx := lo.IndexOf(needCreateOrConvert, 0)
+						// remove from create list
+						needCreateOrConvert = append(needCreateOrConvert[:cardIndex0Idx], needCreateOrConvert[cardIndex0Idx+1:]...)
+					}
+				}
+			}
+			if len(cardIndexENI) == 0 {
+				return nil, nil, 0, fmt.Errorf("cannot find node primary ENI or existing ENI")
+			}
+		} else {
+			needCreateOrConvert = nil
+		}
 	}
 
 	eriList := lo.Map(selectedENIs, func(item *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, _ int) *types.ERI {
-		return toEri(item, queuePairCount/cardCount)
+		return toEri(item, remainQueuePairCountPerCardIndex)
 	})
-
-	var needCreate []int
-	for i := 0; i < cardCount; i++ {
-		if _, ok := cardIndexENI[i]; !ok {
-			needCreate = append(needCreate, i)
-		}
+	if len(eriList) == 0 && len(needCreateOrConvert) == 0 {
+		return nil, nil, 0, fmt.Errorf("cannot create ERI for instance due to no available slot")
 	}
-	eris, err := e.CreateEriForInstance(instanceResp.Body.Instances.Instance[0], needCreate, queuePairCount/cardCount)
-	if err != nil {
-		return nil, err
-	}
-	eriList = append(eriList, eris...)
-
-	return eriList, nil
+	return eriList, needCreateOrConvert, remainQueuePairCountPerCardIndex, nil
 }
 
 func (e *EriClient) EnsureEriForInstance(devices []networkv1.DeviceInfo) ([]networkv1.DeviceStatus, error) {
@@ -346,7 +398,7 @@ func (e *EriClient) EnsureEriForInstance(devices []networkv1.DeviceInfo) ([]netw
 }
 
 func (e *EriClient) OwnENI(eni *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet) bool {
-	if e.managedNonOwned {
+	if e.ManagedNonOwned {
 		return true
 	}
 	if eni.Tags == nil || eni.Tags.Tag == nil {
