@@ -41,7 +41,7 @@ func NewEriClient(k8sClient client.Client) (*EriClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	network := "tcp"
+	network := "vpc"
 	if os.Getenv("PUBLIC_NETWORK") == "true" {
 		network = "public"
 	}
