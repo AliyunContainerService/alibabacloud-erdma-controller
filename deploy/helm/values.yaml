@@ -22,6 +22,7 @@ agent:
     tag: "latest"
   preferDriver: ""
   allocateAllDevices: false
+  exposeERIs: []
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
@@ -54,6 +55,7 @@ config:
   enableWebhook: false
   enableInitContainerInject: true
   smcInitImage: ""
+  simpleMode: false
 
 credentials:
   type: ""

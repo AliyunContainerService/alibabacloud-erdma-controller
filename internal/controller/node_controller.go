@@ -67,71 +67,73 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 	erdmaLogger.WithValues("node", req).Info("Node Added")
 
-	instanceID, err := r.EriClient.InstanceIDFromNode(&node)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	erdmaDevices := networkv1.ERdmaDeviceList{}
-	err = r.Client.List(ctx, &erdmaDevices, client.MatchingLabels{
-		"alibabacloud.com/instance-id": instanceID,
-	})
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if len(erdmaDevices.Items) == 0 {
-		eri, err := r.EriClient.SelectERIs(instanceID)
+	if r.EriClient.client != nil {
+		instanceID, err := r.EriClient.InstanceIDFromNode(&node)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		if eri == nil {
-			erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
-			return ctrl.Result{}, nil
+		erdmaDevices := networkv1.ERdmaDeviceList{}
+		err = r.Client.List(ctx, &erdmaDevices, client.MatchingLabels{
+			"alibabacloud.com/instance-id": instanceID,
+		})
+		if err != nil {
+			return ctrl.Result{}, err
 		}
-		erdmaDevice := networkv1.ERdmaDevice{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: node.Name,
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion: node.APIVersion,
-						Kind:       node.Kind,
-						Name:       node.Name,
-						UID:        node.UID,
+		if len(erdmaDevices.Items) == 0 {
+			eri, err := r.EriClient.SelectERIs(instanceID)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			if eri == nil {
+				erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
+				return ctrl.Result{}, nil
+			}
+			erdmaDevice := networkv1.ERdmaDevice{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: node.Name,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: node.APIVersion,
+							Kind:       node.Kind,
+							Name:       node.Name,
+							UID:        node.UID,
+						},
+					},
+					Labels: map[string]string{
+						"alibabacloud.com/instance-id": instanceID,
+						"alibabacloud.com/nodename":    node.Name,
 					},
 				},
-				Labels: map[string]string{
-					"alibabacloud.com/instance-id": instanceID,
-					"alibabacloud.com/nodename":    node.Name,
+				Spec: networkv1.ERdmaDeviceSpec{
+					Devices: lo.Map(eri, func(item *types.ERI, index int) networkv1.DeviceInfo {
+						return networkv1.DeviceInfo{
+							InstanceID:       item.InstanceID,
+							MAC:              item.MAC,
+							IsPrimaryENI:     item.IsPrimaryENI,
+							ID:               item.ID,
+							NetworkCardIndex: item.CardIndex,
+							QueuePair:        item.QueuePair,
+						}
+					}),
 				},
-			},
-			Spec: networkv1.ERdmaDeviceSpec{
-				Devices: lo.Map(eri, func(item *types.ERI, index int) networkv1.DeviceInfo {
-					return networkv1.DeviceInfo{
-						InstanceID:       item.InstanceID,
-						MAC:              item.MAC,
-						IsPrimaryENI:     item.IsPrimaryENI,
-						ID:               item.ID,
-						NetworkCardIndex: item.CardIndex,
-						QueuePair:        item.QueuePair,
-					}
-				}),
-			},
-		}
-		err = r.Client.Create(ctx, &erdmaDevice)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		_ = wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 2*time.Second, true, func(ctx context.Context) (bool, error) {
-			dev := &networkv1.ERdmaDevice{}
-			err := r.Client.Get(ctx, k8stypes.NamespacedName{
-				Name: erdmaDevice.Name,
-			}, dev)
-			if err != nil {
-				return false, nil
 			}
-			return true, nil
-		})
+			err = r.Client.Create(ctx, &erdmaDevice)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			_ = wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 2*time.Second, true, func(ctx context.Context) (bool, error) {
+				dev := &networkv1.ERdmaDevice{}
+				err := r.Client.Get(ctx, k8stypes.NamespacedName{
+					Name: erdmaDevice.Name,
+				}, dev)
+				if err != nil {
+					return false, nil
+				}
+				return true, nil
+			})
 
-		return ctrl.Result{}, nil
+			return ctrl.Result{}, nil
+		}
 	}
 
 	return ctrl.Result{}, nil

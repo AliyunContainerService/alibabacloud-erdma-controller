@@ -19,6 +19,27 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+func checkExpose(exposeERIs []string, rdmaDevice string) bool {
+	if len(exposeERIs) == 1 && exposeERIs[0] == "" {
+		return true
+	}
+	for _, dev := range exposeERIs {
+		if dev == rdmaDevice {
+			return true
+		}
+	}
+	return false
+}
+
+func isErdmaNetworkInterface(macAddress string, node_guid string) bool {
+	mac_suffix, _ := hostExec(fmt.Sprintf("echo -n %s | tr -d ':' | tail -c 4", macAddress))
+	guid_suffix, _ := hostExec(fmt.Sprintf("echo -n %s | tr -d ':' | tail -c 4", node_guid))
+	if mac_suffix == guid_suffix {
+		return true
+	}
+	return false
+}
+
 func driverExists() bool {
 	if isContainerOS() {
 		_, err := hostExec("modinfo erdma")

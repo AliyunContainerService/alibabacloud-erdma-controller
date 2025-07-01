@@ -68,28 +68,30 @@ func (r *ERdmaDeviceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	erdmaLogger.WithValues("erdma device", req).Info("erdma device Added")
 
-	if len(device.Spec.Devices) == len(device.Status.Devices) {
-		eriNeedConfig := lo.ContainsBy(device.Status.Devices, func(item networkv1.DeviceStatus) bool {
-			return item.Status != networkv1.DeviceStatusReady
-		})
-		if !eriNeedConfig {
-			return ctrl.Result{}, nil
+	if r.EriClient.client != nil {
+		if len(device.Spec.Devices) == len(device.Status.Devices) {
+			eriNeedConfig := lo.ContainsBy(device.Status.Devices, func(item networkv1.DeviceStatus) bool {
+				return item.Status != networkv1.DeviceStatusReady
+			})
+			if !eriNeedConfig {
+				return ctrl.Result{}, nil
+			}
 		}
-	}
 
-	eriStatus, err := r.EriClient.EnsureEriForInstance(device.Spec.Devices)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	device.Status.Devices = eriStatus
-	err = r.Client.Status().Update(ctx, &device)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if lo.ContainsBy(eriStatus, func(item networkv1.DeviceStatus) bool {
-		return item.Status != networkv1.DeviceStatusReady
-	}) {
-		return ctrl.Result{Requeue: true, RequeueAfter: 10 * time.Second}, nil
+		eriStatus, err := r.EriClient.EnsureEriForInstance(device.Spec.Devices)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		device.Status.Devices = eriStatus
+		err = r.Client.Status().Update(ctx, &device)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if lo.ContainsBy(eriStatus, func(item networkv1.DeviceStatus) bool {
+			return item.Status != networkv1.DeviceStatusReady
+		}) {
+			return ctrl.Result{Requeue: true, RequeueAfter: 10 * time.Second}, nil
+		}
 	}
 	return ctrl.Result{}, nil
 }

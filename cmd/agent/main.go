@@ -19,15 +19,21 @@ func main() {
 		preferDriver         string
 		allocAllDevices      bool
 		devicepluginPreStart bool
+		simpleMode           bool
+		exposeERIs           string
 	)
 	flag.StringVar(&preferDriver, "prefer-driver", "", "prefer driver")
 	flag.BoolVar(&allocAllDevices, "allocate-all-devices", false,
 		"allocate all erdma devices for resource request, true => alloc all, false => alloc devices based on numa")
 	flag.BoolVar(&devicepluginPreStart, "deviceplugin-prestart-container", false,
 		"use device plugin prestart container to config smc-r, enable it if not use webhook to inject initContainers")
+	flag.BoolVar(&simpleMode, "simple-mode", false,
+		"If set, support simple mode, which will not use OpenAPI and access key, and will only use created ERI instead of creating ERI")
+	flag.StringVar(&exposeERIs, "expose-eris", "",
+		"allocate specific ERI from existing ERI to pods")
 	flag.Parse()
 
-	eriAgent, err := agent.NewAgent(preferDriver, allocAllDevices, devicepluginPreStart)
+	eriAgent, err := agent.NewAgent(preferDriver, allocAllDevices, devicepluginPreStart, simpleMode, exposeERIs)
 	if err != nil {
 		panic(err)
 	}

@@ -4,6 +4,7 @@ package drivers
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/vishvananda/netlink"
@@ -44,6 +45,7 @@ func (d *DefaultDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, err
 	if err != nil {
 		return nil, fmt.Errorf("list link failed: %v", err)
 	}
+
 	for _, link := range links {
 		if _, ok := link.(*netlink.Device); !ok {
 			continue
@@ -82,4 +84,36 @@ func (d *DefaultDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, err
 
 func (d *DefaultDriver) Name() string {
 	return defaultDriver
+}
+
+func (d *DefaultDriver) SelectERIs(exposeERIs []string) []*types.ERI {
+	var selectEriList []*types.ERI
+	instanceID, _ := hostExec("curl -s http://100.100.100.200/latest/meta-data/instance-id")
+	rdmadevices, _ := hostExec("ls /sys/class/infiniband/")
+	eriList := strings.Fields(strings.TrimSpace(rdmadevices))
+	nics, _ := hostExec("ls /sys/class/net/")
+	nicList := strings.Fields(strings.TrimSpace(nics))
+
+	for _, rdmadevice := range eriList {
+		if checkExpose(exposeERIs, rdmadevice) {
+			node_guid, _ := hostExec(fmt.Sprintf("cat /sys/class/infiniband/%s/node_guid", rdmadevice))
+			for _, nic := range nicList {
+				driverLog.Info("SimpleMode: ", "rdmadevice", rdmadevice, "nic", nic)
+				macAddress, _ := hostExec(fmt.Sprintf("cat /sys/class/net/%s/address", nic))
+				if isErdmaNetworkInterface(strings.TrimSpace(macAddress), strings.TrimSpace(node_guid)) {
+					eri := &types.ERI{
+						ID:           rdmadevice,
+						IsPrimaryENI: nic == "eth0",
+						MAC:          strings.TrimSpace(macAddress),
+						InstanceID:   instanceID,
+						CardIndex:    -1,
+						QueuePair:    -1,
+					}
+					selectEriList = append(selectEriList, eri)
+					driverLog.Info("Simple mode SelectERIs: eri", "eri", eri)
+				}
+			}
+		}
+	}
+	return selectEriList
 }

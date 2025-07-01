@@ -18,6 +18,7 @@ type ERdmaDriver interface {
 	Install() error
 	ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error)
 	Name() string
+	SelectERIs(exposeERIs []string) []*types.ERI
 }
 
 var (
