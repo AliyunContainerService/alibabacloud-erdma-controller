@@ -37,30 +37,38 @@ type EriClient struct {
 }
 
 func NewEriClient(k8sClient client.Client) (*EriClient, error) {
-	cred, err := getCredential(k8sClient)
-	if err != nil {
-		return nil, err
-	}
-	network := "vpc"
-	if os.Getenv("PUBLIC_NETWORK") == "true" {
-		network = "public"
+	var client *ecs.Client
+	simpleMode := config.GetConfig().SimpleMode
+	eriLog.Info("Simple mode: ", "simpleMode", simpleMode)
+	if !simpleMode {
+		cred, err := getCredential(k8sClient)
+		if err != nil {
+			return nil, err
+		}
+		network := "vpc"
+		if os.Getenv("PUBLIC_NETWORK") == "true" {
+			network = "public"
+		}
+
+		ecsEndpoint, err := service.GetEndpointRules(tea.String("ecs"), tea.String(config.GetConfig().Region), tea.String("regional"), tea.String(network), nil)
+		if err != nil {
+			return nil, err
+		}
+		client, err = ecs.NewClient(&openapi.Config{
+			RegionId:     &config.GetConfig().Region,
+			UserAgent:    ptr.To("AlibabaCloud/ERdma-Controller/0.1"),
+			Credential:   cred,
+			EndpointType: tea.String("regional"),
+			Network:      tea.String(network),
+			Endpoint:     ecsEndpoint,
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		client = nil
 	}
 
-	ecsEndpoint, err := service.GetEndpointRules(tea.String("ecs"), tea.String(config.GetConfig().Region), tea.String("regional"), tea.String(network), nil)
-	if err != nil {
-		return nil, err
-	}
-	client, err := ecs.NewClient(&openapi.Config{
-		RegionId:     &config.GetConfig().Region,
-		UserAgent:    ptr.To("AlibabaCloud/ERdma-Controller/0.1"),
-		Credential:   cred,
-		EndpointType: tea.String("regional"),
-		Network:      tea.String(network),
-		Endpoint:     ecsEndpoint,
-	})
-	if err != nil {
-		return nil, err
-	}
 	return &EriClient{
 		regionID:        config.GetConfig().Region,
 		ManagedNonOwned: config.GetConfig().ManageNonOwnedERIs,
