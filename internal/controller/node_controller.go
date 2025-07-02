@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/config"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/samber/lo"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -34,8 +33,9 @@ const (
 // NodeReconciler reconciles a ERdmaDevice object
 type NodeReconciler struct {
 	client.Client
-	Scheme    *runtime.Scheme
-	EriClient *EriClient
+	Scheme     *runtime.Scheme
+	EriClient  *EriClient
+	CtrlConfig *types.Config
 }
 
 // +kubebuilder:rbac:groups=network.alibabacloud.com,resources=erdmadevices,verbs=get;list;watch;create;update;patch;delete
@@ -178,12 +178,27 @@ func (r *NodeReconciler) OwnNode(node *v1.Node) bool {
 	if node == nil {
 		return false
 	}
-	for k, v := range config.GetConfig().NodeSelector {
+	for k, v := range r.CtrlConfig.NodeSelector {
 		if node.Labels[k] != v {
 			return false
 		}
 	}
 	return true
+}
+
+func (r *NodeReconciler) PredictNodeUpdate(oldNode, newNode *v1.Node) bool {
+	if !r.OwnNode(newNode) {
+		return false
+	}
+	if !r.OwnNode(oldNode) && r.OwnNode(newNode) {
+		return true
+	}
+
+	if newNode.DeletionTimestamp != nil {
+		return true
+	}
+
+	return oldNode.Spec.ProviderID != newNode.Spec.ProviderID
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -196,18 +211,7 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return r.OwnNode(e.Object)
 		},
 		UpdateFunc: func(e event.TypedUpdateEvent[*v1.Node]) bool {
-			if !r.OwnNode(e.ObjectNew) {
-				return false
-			}
-			if !r.OwnNode(e.ObjectOld) && r.OwnNode(e.ObjectNew) {
-				return true
-			}
-
-			if e.ObjectNew.DeletionTimestamp != nil {
-				return true
-			}
-
-			return e.ObjectOld.Spec.ProviderID != e.ObjectNew.Spec.ProviderID
+			return r.PredictNodeUpdate(e.ObjectOld, e.ObjectNew)
 		},
 		GenericFunc: func(e event.TypedGenericEvent[*v1.Node]) bool {
 			return r.OwnNode(e.Object)
