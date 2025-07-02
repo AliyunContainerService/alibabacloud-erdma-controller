@@ -169,9 +169,10 @@ func main() {
 	}
 
 	if err = (&controller.NodeReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		EriClient: eriClient,
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		EriClient:  eriClient,
+		CtrlConfig: config.GetConfig(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Node")
 		os.Exit(1)
