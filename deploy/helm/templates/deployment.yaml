@@ -9,6 +9,7 @@ spec:
   selector:
     matchLabels:
       {{- include "alibabacloud-erdma-controller.selectorLabels" . | nindent 6 }}
+      tier: controller
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -17,6 +18,7 @@ spec:
       {{- end }}
       labels:
         {{- include "alibabacloud-erdma-controller.selectorLabels" . | nindent 8 }}
+        tier: controller
     spec:
       {{- with .Values.controller.imagePullSecrets }}
       imagePullSecrets:
@@ -50,11 +52,11 @@ spec:
           secretName: {{ .Release.Name }}
       - name: webhook-vol
         emptyDir: { }
-      {{- with .Values.nodeSelector }}
+      {{- with .Values.controller.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with .Values.controller.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/config"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/samber/lo"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -173,23 +174,43 @@ func RemoveERdmaDevices(erdmaClient client.Client, ctx context.Context, nodeName
 	return ctrl.Result{}, nil
 }
 
+func (r *NodeReconciler) OwnNode(node *v1.Node) bool {
+	if node == nil {
+		return false
+	}
+	for k, v := range config.GetConfig().NodeSelector {
+		if node.Labels[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	pred := predicate.TypedFuncs[*v1.Node]{
 		CreateFunc: func(e event.TypedCreateEvent[*v1.Node]) bool {
-			return true
+			return r.OwnNode(e.Object)
 		},
 		DeleteFunc: func(e event.TypedDeleteEvent[*v1.Node]) bool {
-			return true
+			return r.OwnNode(e.Object)
 		},
 		UpdateFunc: func(e event.TypedUpdateEvent[*v1.Node]) bool {
+			if !r.OwnNode(e.ObjectNew) {
+				return false
+			}
+			if !r.OwnNode(e.ObjectOld) && r.OwnNode(e.ObjectNew) {
+				return true
+			}
+
 			if e.ObjectNew.DeletionTimestamp != nil {
 				return true
 			}
+
 			return e.ObjectOld.Spec.ProviderID != e.ObjectNew.Spec.ProviderID
 		},
 		GenericFunc: func(e event.TypedGenericEvent[*v1.Node]) bool {
-			return true
+			return r.OwnNode(e.Object)
 		},
 	}
 	c, err := controller.New("node-controller", mgr, controller.Options{Reconciler: r})

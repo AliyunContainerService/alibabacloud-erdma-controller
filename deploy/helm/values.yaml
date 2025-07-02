@@ -13,6 +13,8 @@ controller:
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
+  nodeSelector: {}
+  affinity: {}
 
 agent:
   image:
@@ -39,7 +41,8 @@ podAnnotations: {}
 
 nodeSelector: {}
 
-tolerations: []
+tolerations:
+  - operator: "Exists"
 
 affinity: {}
 
