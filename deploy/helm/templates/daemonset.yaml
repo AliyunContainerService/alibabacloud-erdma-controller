@@ -8,6 +8,7 @@ spec:
   selector:
     matchLabels:
       {{- include "alibabacloud-erdma-controller.selectorLabels" . | nindent 6 }}
+      tier: agent
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -16,6 +17,7 @@ spec:
       {{- end }}
       labels:
         {{- include "alibabacloud-erdma-controller.selectorLabels" . | nindent 8 }}
+        tier: agent
     spec:
       hostPID: true
       hostNetwork: true
@@ -83,6 +85,7 @@ spec:
       - name: var-run
         hostPath:
           path: /var/run/
+      priorityClassName: system-node-critical
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
