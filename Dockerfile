@@ -4,43 +4,37 @@ ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
-# Copy the Go Modules manifests
+
+# Copy the Go Modules manifests and cache dependencies
 COPY go.mod go.mod
 COPY go.sum go.sum
-# cache deps before building and copying source so that we don't need to re-download as much
-# and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
-# Copy the go source
-COPY cmd/ cmd/
-COPY api/ api/
-COPY internal/ internal/
+# Copy the Go source code and build the binaries
+COPY cmd/ ./cmd/
+COPY api/ ./api/
+COPY internal/ ./internal/
 
-# Build
-# the GOARCH has not a default value to allow the binary be built according to the host where the command
-# was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
-# the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
-# by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/controller/main.go
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o agent cmd/agent/main.go
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o smcr_init cmd/smcr_init/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -a -o manager ./cmd/controller/main.go && \
+    go build -a -o agent ./cmd/agent/main.go && \
+    go build -a -o smcr_init ./cmd/smcr_init/main.go
 
 # Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot as controller
+FROM gcr.io/distroless/static:nonroot AS controller
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
 
-FROM --platform=$TARGETPLATFORM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 as smcr_init
-RUN yum install -y smc-tools
+FROM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 AS smcr_init
+RUN sed -i 's/mirrors.cloud.aliyuncs.com/mirrors.aliyun.com/g' /etc/yum.repos.d/*; yum install -y smc-tools && yum clean all && rm -rf /var/cache/* /var/lib/dnf/history* /var/lib/rpm/rpm.sqlite
 COPY --from=builder /workspace/smcr_init /usr/local/bin/smcr_init
 ENTRYPOINT ["/usr/local/bin/smcr_init"]
 
-FROM --platform=$TARGETPLATFORM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 as agent
-RUN yum install -y smc-tools procps-ng
+FROM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3 AS agent
+RUN sed -i 's/mirrors.cloud.aliyuncs.com/mirrors.aliyun.com/g' /etc/yum.repos.d/*; yum install -y smc-tools procps-ng && yum clean all && rm -rf /var/cache/* /var/lib/dnf/history* /var/lib/rpm/rpm.sqlite
 COPY --from=builder /workspace/agent /usr/local/bin/agent
 COPY --from=builder /workspace/smcr_init /usr/local/bin/smcr_init
 ENTRYPOINT ["/usr/local/bin/agent"]
