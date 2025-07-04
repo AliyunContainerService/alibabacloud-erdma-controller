@@ -2,6 +2,7 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+# controller will not be deployed if localERIDiscovery is set
 controller:
   replicaCount: 2
   image:
@@ -22,6 +23,9 @@ agent:
     tag: "latest"
   preferDriver: ""
   allocateAllDevices: false
+  # format: <instance_id> <eri-0>/<eri-1>/...
+  exposedLocalERIs:
+    - i-xxx erdma_0/erdma_1
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
@@ -54,6 +58,7 @@ config:
   enableWebhook: false
   enableInitContainerInject: true
   smcInitImage: ""
+  localERIDiscovery: true
 
 credentials:
   type: ""

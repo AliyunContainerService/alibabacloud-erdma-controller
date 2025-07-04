@@ -11,6 +11,7 @@ type Config struct {
 	EnableWebhook             *bool  `json:"enableWebhook"`
 	SMCInitImage              string `json:"smcInitImage"`
 	EnableInitContainerInject *bool  `json:"enableInitContainerInject"`
+	LocalERIDiscovery         bool   `json:"localERIDiscovery"`
 }
 
 type Sensitive string
