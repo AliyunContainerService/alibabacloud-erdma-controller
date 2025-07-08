@@ -1,0 +1,9 @@
+[alinux3-lifsea]
+name=alinux3-lifsea
+baseurl=http://mirrors.cloud.aliyuncs.com/alinux/$releasever/lifsea/$basearch/
+        http://mirrors.aliyun.com/alinux/$releasever/lifsea/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=http://mirrors.cloud.aliyuncs.com/alinux/3/lifsea/RPM-GPG-KEY-ALINUX-3
+       http://mirrors.aliyun.com/alinux/3/lifsea/RPM-GPG-KEY-ALINUX-3
+excludepkgs=systemd*,rpcbind,container-selinux,rpm-ostree*,glibc*,ostree*,nfs-utils,libnfsidmap*,lifsea-release
