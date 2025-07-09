@@ -1,198 +1,28 @@
-//go:build linux
-
 package drivers
 
 import (
-	"bytes"
 	"fmt"
-	"io/fs"
-	"net"
-	"os"
 	"os/exec"
-	"path"
-	"path/filepath"
-	"strconv"
-	"strings"
-
-	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
-	"github.com/samber/lo"
-	"github.com/vishvananda/netlink"
 )
 
-func driverExists() bool {
-	if isContainerOS() {
-		_, err := hostExec("modinfo erdma")
-		if err != nil {
-			driverLog.Info("driver not exists", "checklog", err)
-			return false
-		}
-		return true
+func getInstallScript(compat bool) string {
+	script := `if [ -d /sys/fs/cgroup/cpu/ ]; then cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cpu/tasks && cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/memory/tasks; else 
+cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cgroup.procs; fi && cd /tmp && rm -f erdma_installer-1.4.6.tar.gz &&
+wget 'http://mirrors.cloud.aliyuncs.com/erdma/erdma_installer-1.4.6.tar.gz' && tar -xzvf erdma_installer-1.4.6.tar.gz && cd erdma_installer && 
+(type yum && yum install -y kernel-devel-$(uname -r) gcc-c++ dkms cmake) || (apt update && apt install -y debhelper autotools-dev dkms libnl-3-dev libnl-route-3-dev cmake) &&
+ERDMA_CM_NO_BOUND_IF=1 %s ./install.sh --batch`
+	if compat {
+		return fmt.Sprintf(script, "ERDMA_FORCE_MAD_ENABLE=1")
 	}
-	_, err := hostExec("stat /bin/eadm && modinfo erdma")
-	if err != nil {
-		driverLog.Info("driver not exists", "checklog", err)
-		return false
-	}
-	return true
+	return fmt.Sprintf(script, "")
 }
 
-func isContainerOS() bool {
-	_, err := hostExec("grep -q \"Alibaba Cloud Linux Lifsea\" /etc/os-release")
-	return err == nil
-}
-
-//nolint:unparam
-func hostExec(cmd string) (string, error) {
-	output, err := exec.Command("nsenter", "-t", "1", "-m", "--", "bash", "-c", cmd).CombinedOutput()
+func containerOSDriverInstall(compat bool) error {
+	driverLog.Info("install driver in container os", "compat", compat)
+	containerOSScript := `yum install -y kernel-modules-$(uname -r)`
+	output, err := exec.Command("/usr/bin/bash", "-c", containerOSScript).CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("exec error: %v, output: %s", err, string(output))
-	}
-	return string(output), nil
-}
-
-func EnsureSMCR() error {
-	_, err := hostExec("which smcss || yum install -y smc-tools || apt install -y smc-tools || lifseacli pkg install smc-tools")
-	if err != nil {
-		return err
-	}
-	_, err = hostExec("modprobe smc")
-	if err != nil {
-		return err
+		return fmt.Errorf("exec error: %v, output: %s", err, string(output))
 	}
 	return nil
-}
-
-func GetERdmaDevPathsFromRdmaLink(rdmaLink *netlink.RdmaLink) ([]string, error) {
-	var devPaths []string
-	ibUverbsDevs, err := os.ReadDir("/sys/class/infiniband_verbs/")
-	if err != nil {
-		return nil, fmt.Errorf("read dir /sys/class/infiniband_verbs/ failed: %v", err)
-	}
-	lo.ForEach(ibUverbsDevs, func(ibUverbsDev fs.DirEntry, _ int) {
-		ibDevPath := filepath.Join("/sys/class/infiniband_verbs/", ibUverbsDev.Name(), "ibdev")
-		driverLog.Info("check infiniband path", "path", ibDevPath)
-		if _, err = os.Stat(ibDevPath); err == nil {
-			if devName, err := os.ReadFile(ibDevPath); err == nil {
-				devNameStr := strings.Trim(string(devName), "\n")
-				driverLog.Info("infiniband device", "devName", devNameStr)
-				if devNameStr == rdmaLink.Attrs.Name {
-					devPaths = append(devPaths, filepath.Join("/dev/infiniband", ibUverbsDev.Name()))
-				}
-			}
-		}
-	})
-	if len(devPaths) == 0 {
-		return nil, fmt.Errorf("can not find dev path for %s", rdmaLink.Attrs.Name)
-	}
-
-	if _, err := os.Stat("/dev/infiniband/rdma_cm"); err == nil {
-		devPaths = append(devPaths, "/dev/infiniband/rdma_cm")
-	}
-	return devPaths, nil
-}
-func GetERdmaFromLink(link netlink.Link) (*netlink.RdmaLink, error) {
-	rdmaLinks, err := netlink.RdmaLinkList()
-	if err != nil {
-		return nil, fmt.Errorf("error list rdma links, %v", err)
-	}
-	linkHwAddr := link.Attrs().HardwareAddr
-	// erdma guid first byte is ^= 0x2
-	linkHwAddr[0] ^= 0x2
-	for _, rl := range rdmaLinks {
-		rdmaHwAddr, err := parseERdmaLinkHwAddr(rl.Attrs.NodeGuid)
-		if err != nil {
-			return nil, err
-		}
-		driverLog.Info("check rdma link", "rdmaLink", rl.Attrs.Name, "rdmaHwAddr", rdmaHwAddr.String(), "linkHwAddr", linkHwAddr.String())
-		if rdmaHwAddr.String() == linkHwAddr.String() {
-			return rl, nil
-		}
-	}
-	return nil, fmt.Errorf("cannot found rdma link for %s", link.Attrs().Name)
-}
-
-func parseERdmaLinkHwAddr(guid string) (net.HardwareAddr, error) {
-	hwAddrSlice := make([]byte, 8)
-	guidSlice := strings.Split(guid, ":")
-	if len(guidSlice) != 8 {
-		return nil, fmt.Errorf("invalid rdma guid: %s", guid)
-	}
-	for i, s := range guidSlice {
-		sint, err := strconv.ParseUint(s, 16, 8)
-		if err != nil {
-			return nil, fmt.Errorf("invalid rdma guid: %s, err: %v", guid, err)
-		}
-		hwAddrSlice[7-i] = uint8(sint)
-	}
-	return append(hwAddrSlice[0:3], hwAddrSlice[5:8]...), nil
-}
-
-const (
-	smcPnet = "smc_pnet"
-)
-
-func ConfigSMCPnetForDevice(info *types.ERdmaDeviceInfo) error {
-	output, err := exec.Command(smcPnet, "-s").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to get smc-pnet stat: %v, output: %v", err, string(output))
-	}
-	if bytes.Contains(output, []byte(PNetIDFromDevice(info))) {
-		return nil
-	}
-	output, err = exec.Command(smcPnet, "-a", PNetIDFromDevice(info), "-D", info.Name).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to config smc-pnet rdma device: %v, output: %v", err, string(output))
-	}
-	return nil
-}
-
-func PNetIDFromDevice(info *types.ERdmaDeviceInfo) string {
-	return strings.ReplaceAll(strings.ToUpper(info.MAC), ":", "")
-}
-
-func ConfigForNetDevice(pnet string, netDevice string) error {
-	output, err := exec.Command(smcPnet, "-s").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to get smc-pnet stat for net device: %v, output: %v", err, string(output))
-	}
-	if bytes.Contains(output, []byte(netDevice)) {
-		return nil
-	}
-	output, err = exec.Command(smcPnet, "-a", pnet, "-I", netDevice).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to config smc-pnet net device: %v, output: %v", err, string(output))
-	}
-	return nil
-}
-
-func ConfigForNetnsNetDevice(pnet string, netDevice string, netns string) error {
-	output, err := exec.Command("nsenter", "-n/proc/1/root/"+netns, "--", smcPnet, "-s").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to get smc-pnet stat for net device: %v, output: %v", err, string(output))
-	}
-	if bytes.Contains(output, []byte(netDevice)) {
-		return nil
-	}
-	output, err = exec.Command("nsenter", "-n/proc/1/root/"+netns, "--", smcPnet, "-a", pnet, "-I", netDevice).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to config smc-pnet net device: %v, output: %v", err, string(output))
-	}
-	return nil
-}
-
-func GetERDMANumaNode(info *netlink.RdmaLink) (int64, error) {
-	devNumaPath := path.Join("/sys/class/infiniband/", info.Attrs.Name, "device/numa_node")
-	numaStr, err := os.ReadFile(devNumaPath)
-	if err != nil {
-		return -1, fmt.Errorf("failed to get numa node for %s: %v", info.Attrs.Name, err)
-	}
-	numaStr = bytes.Trim(numaStr, "\n")
-	numa, err := strconv.Atoi(string(numaStr))
-	if err != nil {
-		return -1, fmt.Errorf("failed to parse numa node for %s: %v", info.Attrs.Name, err)
-	}
-	if numa < 0 {
-		numa = 0
-	}
-	return int64(numa), nil
 }

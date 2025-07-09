@@ -20,19 +20,23 @@ cd /tmp && rm -f env_setup.sh && wget http://mirrors.cloud.aliyuncs.com/erdma/en
 type OFEDDriver struct{}
 
 func (d *OFEDDriver) Install() error {
+	execMethod := hostExec
+	if isContainerOS() {
+		execMethod = containerExec
+	}
 	exist := driverExists()
 	if !exist {
-		_, err := hostExec(gpuInstallScript)
+		_, err := execMethod(gpuInstallScript)
 		if err != nil {
 			return err
 		}
 	}
-	_, err := hostExec("if [ -f /sys/module/erdma/parameters/compat_mode ] && [ \"N\" == $(cat /sys/module/erdma/parameters/compat_mode) ]; then rmmod erdma && modprobe erdma compat_mode=Y; else modprobe erdma compat_mode=Y; fi")
+	_, err := execMethod("if [ -f /sys/module/erdma/parameters/compat_mode ] && [ \"N\" == $(cat /sys/module/erdma/parameters/compat_mode) ]; then rmmod erdma && modprobe erdma compat_mode=Y; else modprobe erdma compat_mode=Y; fi")
 	if err != nil {
 		return fmt.Errorf("install erdma driver failed: %v", err)
 	}
 
-	_, err = hostExec("modprobe erdma")
+	_, err = execMethod("modprobe erdma")
 	if err != nil {
 		return fmt.Errorf("install erdma driver failed: %v", err)
 	}
