@@ -11,14 +11,38 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/utils"
 	"github.com/samber/lo"
 	"github.com/vishvananda/netlink"
 )
 
+func checkExpose(instanceID string, exposedLocalERIs []string, rdmaDevice string) (bool, error) {
+	if len(exposedLocalERIs) == 1 && exposedLocalERIs[0] == "" {
+		return true, nil
+	}
+	pattern := `^i-\w+\s+(\w+(?:/\w+)*)$`
+	re := regexp.MustCompile(pattern)
+	for _, exposeInfo := range exposedLocalERIs {
+		if !re.MatchString(exposeInfo) {
+			return false, fmt.Errorf("invalid format %s. Expected format: \"instanceID: interface1 interface2 ...\"", exposeInfo)
+		}
+		id := strings.SplitN(exposeInfo, " ", 2)[0]
+		if instanceID == id {
+			exposeERIs := strings.Split(strings.TrimSpace(strings.SplitN(exposeInfo, " ", 2)[1]), "/")
+			for _, dev := range exposeERIs {
+				if dev == rdmaDevice {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
 func driverExists() bool {
 	if isContainerOS() {
 		_, err := containerExec("modinfo erdma")
@@ -104,14 +128,16 @@ func GetERdmaFromLink(link netlink.Link) (*netlink.RdmaLink, error) {
 	}
 	linkHwAddr := link.Attrs().HardwareAddr
 	// erdma guid first byte is ^= 0x2
-	linkHwAddr[0] ^= 0x2
+	new_linkHwAddr := make(net.HardwareAddr, len(linkHwAddr))
+	copy(new_linkHwAddr, linkHwAddr)
+	new_linkHwAddr[0] ^= 0x2
 	for _, rl := range rdmaLinks {
 		rdmaHwAddr, err := parseERdmaLinkHwAddr(rl.Attrs.NodeGuid)
 		if err != nil {
 			return nil, err
 		}
 		driverLog.Info("check rdma link", "rdmaLink", rl.Attrs.Name, "rdmaHwAddr", rdmaHwAddr.String(), "linkHwAddr", linkHwAddr.String())
-		if rdmaHwAddr.String() == linkHwAddr.String() {
+		if rdmaHwAddr.String() == new_linkHwAddr.String() {
 			return rl, nil
 		}
 	}
@@ -202,4 +228,50 @@ func GetERDMANumaNode(info *netlink.RdmaLink) (int64, error) {
 		numa = 0
 	}
 	return int64(numa), nil
+}
+
+const (
+	instanceIDAddr = "http://100.100.100.200/latest/meta-data/instance-id"
+)
+
+func SelectERIs(exposedLocalERIs []string) ([]*types.ERI, error) {
+	var selectEriList []*types.ERI
+	var isExposed bool
+	instanceID, _ := utils.GetStrFromMetadata(instanceIDAddr)
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, fmt.Errorf("list link failed: %v", err)
+	}
+
+	for _, link := range links {
+		if _, ok := link.(*netlink.Device); !ok {
+			continue
+		}
+		if link.Attrs().HardwareAddr != nil {
+			rdmaLink, _ := GetERdmaFromLink(link)
+			if rdmaLink != nil {
+				rdmadevice := rdmaLink.Attrs.Name
+				isExposed, err = checkExpose(instanceID, exposedLocalERIs, rdmadevice)
+				if isExposed {
+					driverLog.Info("LocalERIDiscovery: expose eri", "rdmadevice", rdmadevice, "link name", link.Attrs().Name)
+					eri := &types.ERI{
+						ID:           rdmadevice,
+						IsPrimaryENI: link.Attrs().Name == "eth0",
+						MAC:          link.Attrs().HardwareAddr.String(),
+						InstanceID:   instanceID,
+						CardIndex:    -1,
+						QueuePair:    -1,
+					}
+					selectEriList = append(selectEriList, eri)
+					driverLog.Info("Simple mode SelectERIs: eri", "eri", eri)
+				} else if err != nil {
+					return nil, err
+				}
+			} else {
+				driverLog.Info("LocalERIDiscovery: link is not rdma device, skip", "link_name", link.Attrs().Name)
+			}
+		}
+	}
+
+	return selectEriList, nil
 }
