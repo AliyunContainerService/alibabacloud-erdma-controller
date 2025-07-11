@@ -21,7 +21,7 @@ spec:
     spec:
       hostPID: true
       hostNetwork: true
-      {{- with .Values.imagePullSecrets }}
+      {{- with .Values.agent.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -43,6 +43,12 @@ spec:
             {{ end }}
             {{ if .Values.agent.allocateAllDevices }}
             - --allocate-all-devices
+            {{ end }}
+            {{ if .Values.config.localERIDiscovery }}
+            - --local-eri-discovery
+            {{ end }}
+            {{ if .Values.agent.exposedLocalERIs }}
+            - --exposed-local-eris={{ join "," .Values.agent.exposedLocalERIs }}
             {{ end }}
             {{ if not .Values.config.enableWebhook }}
             - --deviceplugin-prestart-container
