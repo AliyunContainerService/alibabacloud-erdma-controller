@@ -12,7 +12,6 @@ type Config struct {
 	SMCInitImage              string            `json:"smcInitImage"`
 	EnableInitContainerInject *bool             `json:"enableInitContainerInject"`
 	NodeSelector              map[string]string `json:"nodeSelector"`
-	LocalERIDiscovery         bool              `json:"localERIDiscovery"`
 }
 
 type Sensitive string

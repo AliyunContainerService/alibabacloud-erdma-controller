@@ -22,22 +22,36 @@ import (
 )
 
 func checkExpose(instanceID string, exposedLocalERIs []string, rdmaDevice string) (bool, error) {
+	var unMatchExposeERIs []string
+	isMatched := false
 	if len(exposedLocalERIs) == 1 && exposedLocalERIs[0] == "" {
 		return true, nil
 	}
-	pattern := `^i-\w+\s+(\w+(?:/\w+)*)$`
+	pattern := `^(i-(?:\w+|\*))\s+((?:(?:\w+)(?:\/\w+)*))$`
 	re := regexp.MustCompile(pattern)
 	for _, exposeInfo := range exposedLocalERIs {
 		if !re.MatchString(exposeInfo) {
-			return false, fmt.Errorf("invalid format %s. Expected format: \"instanceID: interface1 interface2 ...\"", exposeInfo)
+			return false, fmt.Errorf("invalid format %s", exposeInfo)
 		}
 		id := strings.SplitN(exposeInfo, " ", 2)[0]
 		if instanceID == id {
+			isMatched = true
 			exposeERIs := strings.Split(strings.TrimSpace(strings.SplitN(exposeInfo, " ", 2)[1]), "/")
 			for _, dev := range exposeERIs {
 				if dev == rdmaDevice {
 					return true, nil
 				}
+			}
+		}
+		if id == "i-*" {
+			unMatchExposeERIs = strings.Split(strings.TrimSpace(strings.SplitN(exposeInfo, " ", 2)[1]), "/")
+		}
+	}
+	if !isMatched {
+		driverLog.Info("no matched instanceID found, using unMatchExposeERIs", "instanceID", instanceID)
+		for _, dev := range unMatchExposeERIs {
+			if dev == "erdma_*" || dev == rdmaDevice {
+				return true, nil
 			}
 		}
 	}

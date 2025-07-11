@@ -25,9 +25,12 @@ agent:
     tag: "latest"
   preferDriver: ""
   allocateAllDevices: false
-  # format: <instance_id> <eri-0>/<eri-1>/...
+  # format: 
+  # expose specific eris for matched node: - <instance_id> <eri-0>/<eri-1>/... 
+  # expose specific eris for unmatched node: - i-* <eri-0>/<eri-1>/...
+  # expose all eris for unmatched node: - i-* erdma_*
   exposedLocalERIs:
-    - i-xxx erdma_0/erdma_1
+    - i-XXX erdma_0/erdma_1
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
