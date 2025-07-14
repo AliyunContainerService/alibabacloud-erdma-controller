@@ -56,6 +56,16 @@ credentials:
   accessKeyID: "{access key}"
   accessKeySecret: "{access key secret}"
 ```
+#### localERIDiscovery mode
+To expose existing erdma devices on the node to pods, enable `localERIDiscovery` configuration in values.yaml. This eliminates the need to create and authorize ram roles and policies according to the above steps for accessing the erdma API.
+##### expose specified erdma devices on each node
+`exposedLocalERIs` field in values.yaml defines which erdma devices are exposed per node. For example:
+```yaml
+exposedLocalERIs:
+  - i-XXX erdma_0/erdma_1 # specify instance ID and erdma devices(erdma_0/erdma_1) to expose
+  - i-* erdma_0           # specify erdma devices(erdma_0) to expose for all unspecified nodes
+  - i-* erdma_*           # expose all existing erdma devices for all unspecified nodes
+```
 #### helm install
 ```sh
 helm install -f values.yaml --namespace kube-system alibaba-erdma-controller deploy/helm/
