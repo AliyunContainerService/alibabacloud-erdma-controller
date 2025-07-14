@@ -5,13 +5,17 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/deviceplugin"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/drivers"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/k8s"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
+	"github.com/samber/lo"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	networkv1 "github.com/AliyunContainerService/alibabacloud-erdma-controller/api/v1"
 )
 
 var (
@@ -23,6 +27,8 @@ type Agent struct {
 	driver               drivers.ERdmaDriver
 	allocAllDevices      bool
 	devicepluginPreStart bool
+	localERIDiscovery    bool
+	exposedLocalERIs     []string
 }
 
 func stackTriger() {
@@ -48,25 +54,56 @@ func stackTriger() {
 	signal.Notify(sigchain, syscall.SIGUSR1)
 }
 
-func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart bool) (*Agent, error) {
+func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart bool, localERIDiscovery bool, exposedLocalERIs string) (*Agent, error) {
 	kubernetes, err := k8s.NewKubernetes()
 	if err != nil {
 		return nil, err
 	}
+	agentLog.Info("NewAgent: ", "localERIDiscovery", localERIDiscovery)
 	return &Agent{
 		kubernetes:           kubernetes,
 		driver:               drivers.GetDriver(preferDriver),
 		allocAllDevices:      allocAllDevice,
 		devicepluginPreStart: devicepluginPreStart,
+		localERIDiscovery:    localERIDiscovery,
+		exposedLocalERIs:     strings.Split(exposedLocalERIs, ","),
 	}, nil
 }
 
 func (a *Agent) Run() error {
 	go stackTriger()
-	// 1. wait related eri device
-	eriInfos, err := a.kubernetes.WaitEriInfo()
-	if err != nil {
-		return err
+	var err error
+	var eriInfos *networkv1.ERdmaDevice
+	var eri []*types.ERI
+	if !a.localERIDiscovery {
+		// 1. wait related eri device
+		eriInfos, err = a.kubernetes.WaitEriInfo()
+		if err != nil {
+			return err
+		}
+	} else {
+		if !(len(a.exposedLocalERIs) == 1 && a.exposedLocalERIs[0] == "") {
+			a.allocAllDevices = true
+			agentLog.Info("LocalERIDiscovery: enable expose ERIs, set allocAllDevices to true")
+		}
+		eri, err = drivers.SelectERIs(a.exposedLocalERIs)
+		if err != nil {
+			return fmt.Errorf("LocalERIDiscovery: select eri failed: %v", err)
+		}
+		eriInfos = &networkv1.ERdmaDevice{
+			Spec: networkv1.ERdmaDeviceSpec{
+				Devices: lo.Map(eri, func(item *types.ERI, index int) networkv1.DeviceInfo {
+					return networkv1.DeviceInfo{
+						InstanceID:       item.InstanceID,
+						MAC:              item.MAC,
+						IsPrimaryENI:     item.IsPrimaryENI,
+						ID:               item.ID,
+						NetworkCardIndex: item.CardIndex,
+						QueuePair:        item.QueuePair,
+					}
+				}),
+			},
+		}
 	}
 	agentLog.Info("eri info", "eriInfo", eriInfos, "driver", a.driver.Name())
 	// 2. install eri driver
