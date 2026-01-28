@@ -5,16 +5,23 @@ import (
 	"os/exec"
 )
 
-func getInstallScript(compat bool) string {
+const (
+	defaultErdmaInstallerVersion = "latest"
+)
+
+func getInstallScript(compat bool, installerVersion string) string {
 	script := `if [ -d /sys/fs/cgroup/cpu/ ]; then cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cpu/tasks && cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/memory/tasks; else 
 cat /proc/self/status | awk '/PPid:/{print $2}' > /sys/fs/cgroup/cgroup.procs; fi && cd /tmp && rm -f erdma_installer-1.4.6.tar.gz &&
-wget 'http://mirrors.cloud.aliyuncs.com/erdma/erdma_installer-1.4.6.tar.gz' && tar -xzvf erdma_installer-1.4.6.tar.gz && cd erdma_installer && 
+wget 'http://mirrors.cloud.aliyuncs.com/erdma/erdma_installer-%s.tar.gz' -O erdma_installer.tar.gz && tar -xzvf erdma_installer.tar.gz && cd erdma_installer && 
 (type yum && yum install -y kernel-devel-$(uname -r) gcc-c++ dkms cmake) || (apt update && apt install -y debhelper autotools-dev dkms libnl-3-dev libnl-route-3-dev cmake) &&
 ERDMA_CM_NO_BOUND_IF=1 %s ./install.sh --batch`
-	if compat {
-		return fmt.Sprintf(script, "ERDMA_FORCE_MAD_ENABLE=1")
+	if installerVersion == "" {
+		installerVersion = defaultErdmaInstallerVersion
 	}
-	return fmt.Sprintf(script, "")
+	if compat {
+		return fmt.Sprintf(script, installerVersion, "ERDMA_FORCE_MAD_ENABLE=1")
+	}
+	return fmt.Sprintf(script, installerVersion, "")
 }
 
 func containerOSDriverInstall(compat bool) error {

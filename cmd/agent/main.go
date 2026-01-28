@@ -16,11 +16,12 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	var (
-		preferDriver         string
-		allocAllDevices      bool
-		devicepluginPreStart bool
-		localERIDiscovery    bool
-		exposedLocalERIs     string
+		preferDriver          string
+		allocAllDevices       bool
+		devicepluginPreStart  bool
+		localERIDiscovery     bool
+		exposedLocalERIs      string
+		erdmaInstallerVersion string
 	)
 	flag.StringVar(&preferDriver, "prefer-driver", "", "prefer driver")
 	flag.BoolVar(&allocAllDevices, "allocate-all-devices", false,
@@ -31,6 +32,8 @@ func main() {
 		"Only manager on-node eri resources without using OpenAPI and access key")
 	flag.StringVar(&exposedLocalERIs, "exposed-local-eris", "",
 		"allocate specific ERI from existing ERI to pods for each instance")
+	flag.StringVar(&erdmaInstallerVersion, "erdma-installer-version", "1.5.4",
+		"erdma installer version")
 	flag.Parse()
 
 	eriAgent, err := agent.NewAgent(
@@ -39,6 +42,7 @@ func main() {
 		devicepluginPreStart,
 		localERIDiscovery,
 		exposedLocalERIs,
+		erdmaInstallerVersion,
 	)
 	if err != nil {
 		panic(err)

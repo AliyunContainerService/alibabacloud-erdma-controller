@@ -54,15 +54,15 @@ func stackTriger() {
 	signal.Notify(sigchain, syscall.SIGUSR1)
 }
 
-func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart bool, localERIDiscovery bool, exposedLocalERIs string) (*Agent, error) {
+func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart bool, localERIDiscovery bool, exposedLocalERIs string, erdmaInstallerVersion string) (*Agent, error) {
 	kubernetes, err := k8s.NewKubernetes()
 	if err != nil {
 		return nil, err
 	}
-	agentLog.Info("NewAgent: ", "localERIDiscovery", localERIDiscovery)
+	agentLog.Info("NewAgent: ", "localERIDiscovery", localERIDiscovery, "erdmaInstallerVersion", erdmaInstallerVersion)
 	return &Agent{
 		kubernetes:           kubernetes,
-		driver:               drivers.GetDriver(preferDriver),
+		driver:               drivers.GetDriver(preferDriver, erdmaInstallerVersion),
 		allocAllDevices:      allocAllDevice,
 		devicepluginPreStart: devicepluginPreStart,
 		localERIDiscovery:    localERIDiscovery,

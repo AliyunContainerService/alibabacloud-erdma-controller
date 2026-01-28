@@ -12,6 +12,8 @@ func init() {
 
 type FakeDriver struct{}
 
+func (f *FakeDriver) SetERdmaInstallerVersion(_ string) {}
+
 func (f *FakeDriver) Install() error {
 	return nil
 }

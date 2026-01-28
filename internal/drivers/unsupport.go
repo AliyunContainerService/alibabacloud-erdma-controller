@@ -15,6 +15,8 @@ func init() {
 
 type UnSupportDriver struct{}
 
+func (u *UnSupportDriver) SetERdmaInstallerVersion(_ string) {}
+
 func (u *UnSupportDriver) Install() error {
 	return nil
 }
