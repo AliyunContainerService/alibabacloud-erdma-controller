@@ -13,7 +13,13 @@ func init() {
 	Register(defaultDriver, &DefaultDriver{})
 }
 
-type DefaultDriver struct{}
+type DefaultDriver struct {
+	erdmaInstallerVersion string
+}
+
+func (d *DefaultDriver) SetERdmaInstallerVersion(version string) {
+	d.erdmaInstallerVersion = version
+}
 
 func (d *DefaultDriver) Install() error {
 	exist := driverExists()
@@ -24,7 +30,7 @@ func (d *DefaultDriver) Install() error {
 				return err
 			}
 		} else {
-			_, err := hostExec(getInstallScript(false))
+			_, err := hostExec(getInstallScript(false, d.erdmaInstallerVersion))
 			if err != nil {
 				return err
 			}

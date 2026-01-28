@@ -19,6 +19,8 @@ cd /tmp && rm -f env_setup.sh && wget http://mirrors.cloud.aliyuncs.com/erdma/en
 
 type OFEDDriver struct{}
 
+func (d *OFEDDriver) SetERdmaInstallerVersion(_ string) {}
+
 func (d *OFEDDriver) Install() error {
 	execMethod := hostExec
 	if isContainerOS() {

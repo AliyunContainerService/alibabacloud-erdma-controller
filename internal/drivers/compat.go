@@ -13,7 +13,13 @@ func init() {
 	Register("compat", &CompatDriver{})
 }
 
-type CompatDriver struct{}
+type CompatDriver struct {
+	erdmaInstallerVersion string
+}
+
+func (d *CompatDriver) SetERdmaInstallerVersion(version string) {
+	d.erdmaInstallerVersion = version
+}
 
 func (d *CompatDriver) Install() error {
 	exist := driverExists()
@@ -24,7 +30,7 @@ func (d *CompatDriver) Install() error {
 				return err
 			}
 		} else {
-			_, err := hostExec(getInstallScript(true))
+			_, err := hostExec(getInstallScript(true, d.erdmaInstallerVersion))
 			if err != nil {
 				return err
 			}
