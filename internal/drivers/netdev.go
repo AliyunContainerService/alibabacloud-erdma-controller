@@ -41,7 +41,7 @@ func EnsureNetDevice(link netlink.Link, eri *types.ERI) error {
 	if err != nil {
 		return err
 	}
-	if link.Attrs().OperState != netlink.OperUp {
+	if link.Attrs().OperState != netlink.OperUp || !hasNonLinkLocalAddr(link) {
 		driverLog.Info("link down, try to up it", "link", link.Attrs().Name)
 		err = ensureUpLink(link)
 		if err != nil {
@@ -232,6 +232,19 @@ func genRoutesForAddr(gateway net.IP, cidr *net.IPNet) ([]*route, error) {
 	defaultRoute.metric = selectMetric(defaultRoute)
 	defaultRoute.gateway = gateway
 	return []*route{cidrRoute, defaultRoute}, nil
+}
+
+func hasNonLinkLocalAddr(link netlink.Link) bool {
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	if err != nil {
+		return false
+	}
+	for _, addr := range addrs {
+		if !addr.IP.IsLinkLocalUnicast() && !addr.IP.IsLinkLocalMulticast() {
+			return true
+		}
+	}
+	return false
 }
 
 func getNetConfFromMetadata(mac string) (*netConf, error) {
