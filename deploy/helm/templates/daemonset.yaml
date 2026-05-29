@@ -53,6 +53,9 @@ spec:
             {{ if not .Values.config.enableWebhook }}
             - --deviceplugin-prestart-container
             {{ end }}
+            {{ if .Values.agent.jumboFrameMTU }}
+            - --jumbo-frame-mtu={{ .Values.agent.jumboFrameMTU }}
+            {{ end }}
           image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
           env:

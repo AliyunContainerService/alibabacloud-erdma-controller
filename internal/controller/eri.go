@@ -397,6 +397,20 @@ func (e *EriClient) EnsureEriForInstance(devices []networkv1.DeviceInfo) ([]netw
 	return devStatus, nil
 }
 
+func (e *EriClient) IsJumboFrameEnabled(instanceID string) (bool, error) {
+	resp, err := e.client.DescribeInstanceAttribute(&ecs.DescribeInstanceAttributeRequest{
+		InstanceId: ptr.To(instanceID),
+	})
+	if err != nil {
+		return false, fmt.Errorf("cannot describe instance attribute %s: %s", instanceID, err)
+	}
+	return jumboFrameFromAttr(resp.Body.EnableJumboFrame), nil
+}
+
+func jumboFrameFromAttr(enabled *bool) bool {
+	return enabled != nil && *enabled
+}
+
 func (e *EriClient) OwnENI(eni *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet) bool {
 	if e.ManagedNonOwned {
 		return true

@@ -22,6 +22,7 @@ func main() {
 		localERIDiscovery     bool
 		exposedLocalERIs      string
 		erdmaInstallerVersion string
+		jumboFrameMTU         int
 	)
 	flag.StringVar(&preferDriver, "prefer-driver", "", "prefer driver")
 	flag.BoolVar(&allocAllDevices, "allocate-all-devices", false,
@@ -34,6 +35,8 @@ func main() {
 		"allocate specific ERI from existing ERI to pods for each instance")
 	flag.StringVar(&erdmaInstallerVersion, "erdma-installer-version", "1.5.4",
 		"erdma installer version")
+	flag.IntVar(&jumboFrameMTU, "jumbo-frame-mtu", 8500,
+		"MTU value to set on ERDMA network interfaces when jumbo frame is enabled")
 	flag.Parse()
 
 	eriAgent, err := agent.NewAgent(
@@ -43,6 +46,7 @@ func main() {
 		localERIDiscovery,
 		exposedLocalERIs,
 		erdmaInstallerVersion,
+		jumboFrameMTU,
 	)
 	if err != nil {
 		panic(err)
