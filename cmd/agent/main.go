@@ -32,7 +32,7 @@ func main() {
 		"Only manager on-node eri resources without using OpenAPI and access key")
 	flag.StringVar(&exposedLocalERIs, "exposed-local-eris", "",
 		"allocate specific ERI from existing ERI to pods for each instance")
-	flag.StringVar(&erdmaInstallerVersion, "erdma-installer-version", "1.5.4",
+	flag.StringVar(&erdmaInstallerVersion, "erdma-installer-version", "1.5.9",
 		"erdma installer version")
 	flag.Parse()
 
