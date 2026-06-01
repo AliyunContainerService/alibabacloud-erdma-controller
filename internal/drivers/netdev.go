@@ -41,8 +41,14 @@ func EnsureNetDevice(link netlink.Link, eri *types.ERI) error {
 	if err != nil {
 		return err
 	}
+	mtu := jumboMTU(eri)
 	if link.Attrs().OperState != netlink.OperUp || !hasNonLinkLocalAddr(link) {
 		driverLog.Info("link down, try to up it", "link", link.Attrs().Name)
+		if eri.JumboFrame {
+			if err = ensureMTU(link, mtu); err != nil {
+				return err
+			}
+		}
 		err = ensureUpLink(link)
 		if err != nil {
 			return err
@@ -64,6 +70,11 @@ func EnsureNetDevice(link netlink.Link, eri *types.ERI) error {
 		return nil
 	} else {
 		// if interface is already up, don't config it to avoid traffic disruption, just check it's addr
+		if eri.JumboFrame {
+			if err = ensureMTU(link, mtu); err != nil {
+				return err
+			}
+		}
 		addrList, err := netlink.AddrList(link, netlink.FAMILY_V4)
 		if err != nil {
 			return err
@@ -79,6 +90,13 @@ func EnsureNetDevice(link netlink.Link, eri *types.ERI) error {
 		}
 		return nil
 	}
+}
+
+func ensureMTU(link netlink.Link, mtu int) error {
+	if link.Attrs().MTU == mtu {
+		return nil
+	}
+	return netlink.LinkSetMTU(link, mtu)
 }
 
 func ensureUpLink(link netlink.Link) error {

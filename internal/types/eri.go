@@ -3,12 +3,14 @@ package types
 import "strings"
 
 type ERI struct {
-	ID           string
-	IsPrimaryENI bool
-	MAC          string
-	InstanceID   string
-	CardIndex    int
-	QueuePair    int
+	ID            string
+	IsPrimaryENI  bool
+	MAC           string
+	InstanceID    string
+	CardIndex     int
+	QueuePair     int
+	JumboFrame    bool
+	JumboFrameMTU int
 }
 
 type ERdmaCAP uint32

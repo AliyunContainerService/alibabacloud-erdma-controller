@@ -88,6 +88,11 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
 			return ctrl.Result{}, nil
 		}
+		jumboFrame, err := r.EriClient.IsJumboFrameEnabled(instanceID)
+		if err != nil {
+			erdmaLogger.Error(err, "failed to check jumbo frame status, defaulting to false")
+			jumboFrame = false
+		}
 		erdmaDevice := networkv1.ERdmaDevice{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: node.Name,
@@ -105,6 +110,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				},
 			},
 			Spec: networkv1.ERdmaDeviceSpec{
+				JumboFrame: jumboFrame,
 				Devices: lo.Map(eri, func(item *types.ERI, index int) networkv1.DeviceInfo {
 					return networkv1.DeviceInfo{
 						InstanceID:       item.InstanceID,

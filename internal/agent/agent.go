@@ -29,6 +29,7 @@ type Agent struct {
 	devicepluginPreStart bool
 	localERIDiscovery    bool
 	exposedLocalERIs     []string
+	jumboFrameMTU        int
 }
 
 func stackTriger() {
@@ -54,12 +55,12 @@ func stackTriger() {
 	signal.Notify(sigchain, syscall.SIGUSR1)
 }
 
-func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart bool, localERIDiscovery bool, exposedLocalERIs string, erdmaInstallerVersion string) (*Agent, error) {
+func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart bool, localERIDiscovery bool, exposedLocalERIs string, erdmaInstallerVersion string, jumboFrameMTU int) (*Agent, error) {
 	kubernetes, err := k8s.NewKubernetes()
 	if err != nil {
 		return nil, err
 	}
-	agentLog.Info("NewAgent: ", "localERIDiscovery", localERIDiscovery, "erdmaInstallerVersion", erdmaInstallerVersion)
+	agentLog.Info("NewAgent: ", "localERIDiscovery", localERIDiscovery, "erdmaInstallerVersion", erdmaInstallerVersion, "jumboFrameMTU", jumboFrameMTU)
 	return &Agent{
 		kubernetes:           kubernetes,
 		driver:               drivers.GetDriver(preferDriver, erdmaInstallerVersion),
@@ -67,6 +68,7 @@ func NewAgent(preferDriver string, allocAllDevice bool, devicepluginPreStart boo
 		devicepluginPreStart: devicepluginPreStart,
 		localERIDiscovery:    localERIDiscovery,
 		exposedLocalERIs:     strings.Split(exposedLocalERIs, ","),
+		jumboFrameMTU:        jumboFrameMTU,
 	}, nil
 }
 
@@ -114,11 +116,13 @@ func (a *Agent) Run() error {
 	erdmaDevices := make([]*types.ERdmaDeviceInfo, 0)
 	for _, eriInfo := range eriInfos.Spec.Devices {
 		deviceInfo, err := a.driver.ProbeDevice(&types.ERI{
-			ID:           eriInfo.ID,
-			IsPrimaryENI: eriInfo.IsPrimaryENI,
-			MAC:          eriInfo.MAC,
-			InstanceID:   eriInfo.InstanceID,
-			CardIndex:    eriInfo.NetworkCardIndex,
+			ID:            eriInfo.ID,
+			IsPrimaryENI:  eriInfo.IsPrimaryENI,
+			MAC:           eriInfo.MAC,
+			InstanceID:    eriInfo.InstanceID,
+			CardIndex:     eriInfo.NetworkCardIndex,
+			JumboFrame:    eriInfos.Spec.JumboFrame,
+			JumboFrameMTU: a.jumboFrameMTU,
 		})
 		if err != nil {
 			return fmt.Errorf("probe device failed, err: %v", err)

@@ -38,7 +38,8 @@ type ERdmaDeviceSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of ERdmaDevice. Edit erdmadevice_types.go to remove/update
-	Devices []DeviceInfo `json:"devices"`
+	Devices    []DeviceInfo `json:"devices"`
+	JumboFrame bool         `json:"jumboFrame,omitempty"`
 }
 
 const (
