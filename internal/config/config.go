@@ -71,6 +71,9 @@ func parseConfig(configPath string) (*types.Config, error) {
 	if erdmaConfig.EnableDevicePlugin == nil {
 		erdmaConfig.EnableDevicePlugin = ptr.To(true)
 	}
+	if erdmaConfig.WaitNodeReadyTimeoutSeconds == 0 {
+		erdmaConfig.WaitNodeReadyTimeoutSeconds = 300
+	}
 	if erdmaConfig.Region == "" {
 		configLog.Info("region is not set, try to get region from metaserver")
 		erdmaConfig.Region, err = getRegion()
