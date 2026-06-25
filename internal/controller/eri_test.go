@@ -14,6 +14,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestEnsureEriTagsEmptyInputIsNoop(t *testing.T) {
+	// EriClient.client is nil; should still return nil without panicking when
+	// there is nothing to tag. Guards against accidentally calling the
+	// OpenAPI for empty ENI lists (which the ECS server rejects).
+	e := &controller.EriClient{}
+	assert.NoError(t, e.EnsureEriTags(nil, "i-xxx"))
+	assert.NoError(t, e.EnsureEriTags([]string{}, ""))
+}
+
 func TestSelectEriFromExist(t *testing.T) {
 	tests := []struct {
 		name                     string

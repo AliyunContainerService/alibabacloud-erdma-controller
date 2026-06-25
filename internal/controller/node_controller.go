@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
+	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -36,6 +38,12 @@ type NodeReconciler struct {
 	Scheme     *runtime.Scheme
 	EriClient  *EriClient
 	CtrlConfig *types.Config
+
+	// taggedENIs tracks which ENIs have already been backfilled with the
+	// terway-compat tags during this controller process lifetime, so that
+	// existing ERdmaDevice CRs only trigger one TagResources call per ENI
+	// across all reconcile passes.
+	taggedENIs sync.Map
 }
 
 // +kubebuilder:rbac:groups=network.alibabacloud.com,resources=erdmadevices,verbs=get;list;watch;create;update;patch;delete
@@ -141,7 +149,39 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, nil
 	}
 
+	// Existing ERdmaDevice CR path: backfill terway-compat tags once per
+	// controller lifetime so old nodes provisioned before this feature also
+	// stop conflicting with terway.
+	r.backfillEriTags(erdmaDevices.Items, instanceID, erdmaLogger)
+
 	return ctrl.Result{}, nil
+}
+
+func (r *NodeReconciler) backfillEriTags(devices []networkv1.ERdmaDevice, instanceID string, logger logr.Logger) {
+	var pending []string
+	for _, dev := range devices {
+		for _, d := range dev.Spec.Devices {
+			if d.ID == "" {
+				continue
+			}
+			if _, loaded := r.taggedENIs.LoadOrStore(d.ID, struct{}{}); loaded {
+				continue
+			}
+			pending = append(pending, d.ID)
+		}
+	}
+	if len(pending) == 0 {
+		return
+	}
+	if err := r.EriClient.EnsureEriTags(pending, instanceID); err != nil {
+		// Roll back the in-memory marker so the next reconcile retries.
+		for _, id := range pending {
+			r.taggedENIs.Delete(id)
+		}
+		logger.Error(err, "failed to backfill terway-compat tags on existing ERIs", "enis", pending, "instanceID", instanceID)
+		return
+	}
+	logger.Info("backfilled terway-compat tags on existing ERIs", "enis", pending, "instanceID", instanceID)
 }
 
 func RemoveERdmaDevices(erdmaClient client.Client, ctx context.Context, nodeName string) (ctrl.Result, error) {
