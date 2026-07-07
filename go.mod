@@ -25,6 +25,7 @@ require (
 require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
 )
 

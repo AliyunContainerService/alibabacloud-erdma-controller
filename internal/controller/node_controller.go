@@ -66,6 +66,16 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if !node.GetDeletionTimestamp().IsZero() {
 		return RemoveERdmaDevices(r.Client, ctx, req.Name)
 	}
+	if !isNodeReady(&node) {
+		timeout := time.Duration(r.CtrlConfig.WaitNodeReadyTimeoutSeconds) * time.Second
+		elapsed := time.Since(node.CreationTimestamp.Time)
+		if elapsed < timeout {
+			erdmaLogger.Info("Node is not ready, waiting", "node", req.Name, "elapsed", elapsed)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		erdmaLogger.Info("Node is not ready but timeout exceeded, proceeding", "node", req.Name, "elapsed", elapsed)
+	}
+
 	erdmaLogger.WithValues("node", req).Info("Node Added")
 
 	instanceID, err := r.EriClient.InstanceIDFromNode(&node)
@@ -180,6 +190,15 @@ func RemoveERdmaDevices(erdmaClient client.Client, ctx context.Context, nodeName
 	return ctrl.Result{}, nil
 }
 
+func isNodeReady(node *v1.Node) bool {
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == v1.NodeReady {
+			return cond.Status == v1.ConditionTrue
+		}
+	}
+	return false
+}
+
 func (r *NodeReconciler) OwnNode(node *v1.Node) bool {
 	if node == nil {
 		return false
@@ -201,6 +220,10 @@ func (r *NodeReconciler) PredictNodeUpdate(oldNode, newNode *v1.Node) bool {
 	}
 
 	if newNode.DeletionTimestamp != nil {
+		return true
+	}
+
+	if !isNodeReady(oldNode) && isNodeReady(newNode) {
 		return true
 	}
 
