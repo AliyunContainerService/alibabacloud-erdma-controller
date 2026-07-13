@@ -84,7 +84,13 @@ func isContainerOS() bool {
 
 //nolint:unparam
 func hostExec(cmd string) (string, error) {
-	output, err := exec.Command("nsenter", "-t", "1", "-m", "--", "bash", "-c", cmd).CombinedOutput()
+	// Enter PID 1's mount (-m) AND cgroup (-C) namespaces. The cgroup namespace
+	// matters for the driver installer: it moves its parent process into a host
+	// cgroup, and cgroup v2 forbids moving a task into a cgroup above the
+	// writer's own cgroup-namespace root. Without -C the process stays in the
+	// container's cgroup namespace and the move fails (ENOENT); -C is a no-op
+	// for the other host commands. nsenter -C works on cgroup v1 hosts too.
+	output, err := exec.Command("nsenter", "-t", "1", "-m", "-C", "--", "bash", "-c", cmd).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("exec error: %v, output: %s", err, string(output))
 	}

@@ -14,15 +14,17 @@ func main() {
 		log.Fatal("smcr pnetid is empty")
 	}
 	// 1. config sysctls
-	// smc module is load
-	_, err := os.Stat("/proc/sys/net/smc/tcp2smc")
-	if err != nil {
-		log.Fatal("error setting tcp2smcr", err)
+	// tcp2smc transparently redirects eligible TCP traffic to SMC-R. It is an
+	// Alibaba Cloud Linux kernel knob that has been removed on newer kernels
+	// (e.g. Alibaba Cloud Linux 4). Its absence means SMC-R is not supported on
+	// this kernel, so fail with a clear message rather than a cryptic error.
+	if _, err := os.Stat("/proc/sys/net/smc/tcp2smc"); err != nil {
+		log.Fatalf("SMC-R is not supported on this kernel: /proc/sys/net/smc/tcp2smc is unavailable "+
+			"(e.g. removed on Alibaba Cloud Linux 4): %v", err)
 	}
-
-	err = os.WriteFile("/proc/sys/net/smc/tcp2smc", []byte("1"), 0644)
+	err := os.WriteFile("/proc/sys/net/smc/tcp2smc", []byte("1"), 0644)
 	if err != nil {
-		log.Fatal("error setting tcp2smcr", err)
+		log.Fatal("error setting tcp2smc", err)
 	}
 	err = os.WriteFile("/proc/sys/net/ipv6/conf/all/disable_ipv6", []byte("1"), 0644)
 	if err != nil {
