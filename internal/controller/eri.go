@@ -26,6 +26,12 @@ const (
 	eriTagCreatorKey    = "creator"
 	eriTagCreatorValue  = "alibabacloud-erdma-controller"
 	eriTagInstanceIdKey = "instance-id"
+	// eriTagExcludedKey marks an ENI as out-of-scope for other ENI managers
+	// (notably terway CNI), so they will not allocate Pod IPs from it.
+	eriTagExcludedKey   = "terway.alibabacloud.com/excluded"
+	eriTagExcludedValue = "true"
+
+	eniResourceType = "eni"
 
 	trafficModeRDMA = "HighPerformance"
 )
@@ -153,6 +159,9 @@ func (e *EriClient) CreateEriForInstance(instanceInfo *ecs.DescribeInstancesResp
 			}, {
 				Key:   ptr.To(eriTagInstanceIdKey),
 				Value: instanceInfo.InstanceId,
+			}, {
+				Key:   ptr.To(eriTagExcludedKey),
+				Value: ptr.To(eriTagExcludedValue),
 			}},
 			VSwitchId: instanceInfo.VpcAttributes.VSwitchId,
 		})
@@ -171,7 +180,7 @@ func (e *EriClient) CreateEriForInstance(instanceInfo *ecs.DescribeInstancesResp
 	return eris, nil
 }
 
-func (e *EriClient) ConvertPrimaryENI(primaryENI string, queuePair int) error {
+func (e *EriClient) ConvertPrimaryENI(primaryENI string, instanceID string, queuePair int) error {
 	if _, err := e.client.ModifyNetworkInterfaceAttribute(&ecs.ModifyNetworkInterfaceAttributeRequest{
 		RegionId:           ptr.To(e.regionID),
 		NetworkInterfaceId: ptr.To(primaryENI),
@@ -182,6 +191,43 @@ func (e *EriClient) ConvertPrimaryENI(primaryENI string, queuePair int) error {
 		},
 	}); err != nil {
 		return err
+	}
+	if err := e.EnsureEriTags([]string{primaryENI}, instanceID); err != nil {
+		eriLog.Error(err, "failed to ensure tags on primary ENI after RDMA convert", "eni", primaryENI)
+	}
+	return nil
+}
+
+// EnsureEriTags adds the terway-excluded and instance-id tags to the given ENIs.
+// It deliberately does NOT add the creator tag because this method is called on
+// ENIs that may not have been created by erdma-controller (e.g. ECS-console
+// pre-bound ERDMA NICs or Primary ENIs converted to RDMA). The creator tag is
+// only set at CreateNetworkInterface time for ENIs this controller actually creates.
+// TagResources is idempotent on the cloud side: re-applying the same (key,value)
+// pair is a no-op, so this is safe to call repeatedly. instanceID may be empty,
+// in which case the instance-id tag is skipped.
+func (e *EriClient) EnsureEriTags(eniIDs []string, instanceID string) error {
+	if len(eniIDs) == 0 {
+		return nil
+	}
+	tags := []*ecs.TagResourcesRequestTag{{
+		Key:   ptr.To(eriTagExcludedKey),
+		Value: ptr.To(eriTagExcludedValue),
+	}}
+	if instanceID != "" {
+		tags = append(tags, &ecs.TagResourcesRequestTag{
+			Key:   ptr.To(eriTagInstanceIdKey),
+			Value: ptr.To(instanceID),
+		})
+	}
+	_, err := e.client.TagResources(&ecs.TagResourcesRequest{
+		RegionId:     ptr.To(e.regionID),
+		ResourceType: ptr.To(eniResourceType),
+		ResourceId:   lo.Map(eniIDs, func(id string, _ int) *string { return ptr.To(id) }),
+		Tag:          tags,
+	})
+	if err != nil {
+		return fmt.Errorf("tag ERI resources %v: %w", eniIDs, err)
 	}
 	return nil
 }
@@ -248,6 +294,13 @@ func (e *EriClient) SelectERIs(instanceID string) ([]*types.ERI, error) {
 	}
 	selectEriList = append(selectEriList, eris...)
 
+	// Backfill the terway-compat tags on every managed ERI (covers ECS-console
+	// pre-bound ENIs and ENIs created by older versions that only had two tags).
+	// Failure is non-fatal: ERDMA still works, terway compatibility is just
+	// degraded until the next reconcile retries.
+	if err := e.EnsureEriTags(lo.Map(selectEriList, func(item *types.ERI, _ int) string { return item.ID }), instanceID); err != nil {
+		eriLog.Error(err, "failed to ensure tags on selected ERIs", "instanceID", instanceID)
+	}
 	return selectEriList, nil
 }
 
@@ -379,7 +432,7 @@ func (e *EriClient) EnsureEriForInstance(devices []networkv1.DeviceInfo) ([]netw
 			}
 		}
 		if device.IsPrimaryENI && *eniStatus.Status == types.ENIStatusInUse && *eniStatus.NetworkInterfaceTrafficMode != trafficModeRDMA {
-			err = e.ConvertPrimaryENI(device.ID, device.QueuePair)
+			err = e.ConvertPrimaryENI(device.ID, device.InstanceID, device.QueuePair)
 			if err != nil {
 				devStatus = append(devStatus, networkv1.DeviceStatus{
 					ID:      device.ID,

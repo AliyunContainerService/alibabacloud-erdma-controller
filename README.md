@@ -27,7 +27,8 @@ alibabacloud-erdma-controller need following permissions:
         "ecs:DescribeNetworkInterfaces",
         "ecs:ModifyNetworkInterfaceAttribute",
         "ecs:CreateNetworkInterface",
-        "ecs:AttachNetworkInterface"
+        "ecs:AttachNetworkInterface",
+        "ecs:TagResources"
       ],
       "Resource": [
         "*"
