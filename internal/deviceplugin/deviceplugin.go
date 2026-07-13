@@ -158,9 +158,13 @@ func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginap
 			return nil, fmt.Errorf("can not ensure sysctl fs rw permission %s, err: %v", ensureSysctlFSRW, err)
 		}
 
-		err = configSysctl("net.smc.tcp2smc=1")
-		if err != nil {
-			return &pluginapi.PreStartContainerResponse{}, err
+		// tcp2smc transparently redirects eligible TCP traffic to SMC-R. This
+		// knob has been removed on newer kernels (e.g. Alibaba Cloud Linux 4);
+		// its absence means SMC-R is not supported, so fail with a clear
+		// message rather than the raw sysctl error.
+		if err = configSysctl("net.smc.tcp2smc=1"); err != nil {
+			return &pluginapi.PreStartContainerResponse{}, fmt.Errorf("SMC-R is not supported on this kernel "+
+				"(net.smc.tcp2smc unavailable, e.g. removed on Alibaba Cloud Linux 4): %w", err)
 		}
 		err = configSysctl("net.ipv6.conf.all.disable_ipv6=1")
 		if err != nil {
