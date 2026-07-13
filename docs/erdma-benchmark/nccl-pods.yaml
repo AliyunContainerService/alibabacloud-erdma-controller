@@ -1,0 +1,45 @@
+# NCCL over eRDMA 跨节点测试 pod x2
+#
+# 说明:
+# - privileged + NVIDIA_VISIBLE_DEVICES=all: 绕过 GPU 设备插件配额直接访问宿主机全部 GPU
+#   (当 aliyun.com/gpu 配额被占满、但只是做压测时用). 若想走正常调度, 去掉 privileged/env,
+#   改为在 resources.limits 里申请 aliyun.com/gpu.
+# - aliyun/erdma: "1" 仍走 eRDMA 设备插件, 保证 ERI 正确 attach.
+# - podAntiAffinity 自动分到 2 个不同节点.
+#
+#   kubectl apply -f nccl-pods.yaml
+#   kubectl wait --for=condition=Ready pod -l app=nccl-test --timeout=360s
+#   kubectl get pods -l app=nccl-test -o wide   # 记下两个 pod IP
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nccl-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: nccl-test}
+  template:
+    metadata:
+      labels: {app: nccl-test}
+    spec:
+      nodeSelector:
+        aliyun.accelerator/erdma: "true"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {app: nccl-test}
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: nccl
+          image: registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "infinity"]
+          securityContext:
+            privileged: true
+          env:
+            - {name: NVIDIA_VISIBLE_DEVICES, value: "all"}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+          resources:
+            limits:
+              aliyun/erdma: "1"
