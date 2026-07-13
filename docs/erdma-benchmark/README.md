@@ -19,7 +19,7 @@
 
 ## 测试镜像
 
-```
+```text
 registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl
 ```
 
@@ -124,7 +124,7 @@ mpirun --allow-run-as-root -np 2 -H <IPA>:1,<IPB>:1 \
 
 ### 3.3 开启 GDR
 默认 **不走 GDR**（`use ring ... GDR 0`），因为 GPU↔网卡 PCIe 距离超过默认阈值。加：
-```
+```bash
 -x NCCL_NET_GDR_LEVEL=SYS
 ```
 生效后通道变为 `via NET/IB/0/GDRDMA`，`GPU Direct RDMA Enabled`。
@@ -137,7 +137,7 @@ mpirun --allow-run-as-root -np 2 -H <IPA>:1,<IPB>:1 \
 
 ### 4.1 GID 自动发现（解决 GID index 差异）
 用 **ADDR_RANGE 按 IP 段自动选 GID**，每块网卡各自匹配自己的 IPv4 RoCEv2 GID：
-```
+```bash
 -x NCCL_IB_HCA=erdma_0,erdma_1
 -x NCCL_IB_GID_INDEX=-1        # 自动
 -x NCCL_IB_ADDR_FAMILY=AF_INET
@@ -148,7 +148,7 @@ mpirun --allow-run-as-root -np 2 -H <IPA>:1,<IPB>:1 \
 
 ### 4.2 强制两块网卡并行（自定义 graph）
 仅靠上面还不够：拓扑距离一致时 NCCL 会把所有 GPU 都分到第一块网卡。用 [`nccl-graph.xml`](./nccl-graph.xml) 把 **channel 0 钉到 net dev 0（erdma_0）、channel 1 钉到 net dev 0x1（erdma_1）**：
-```
+```bash
 -x NCCL_GRAPH_FILE=/root/nccl-graph.xml
 ```
 配合 **每节点 8 GPU** 运行。验证成功的标志：日志里 `via NET/IB/0/GDRDMA` 和 `via NET/IB/1/GDRDMA` 数量相当（两块网卡均衡并行），且同时出现两块网卡各自的 GID。
