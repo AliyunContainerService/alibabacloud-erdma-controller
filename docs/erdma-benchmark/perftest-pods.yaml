@@ -1,0 +1,37 @@
+# eRDMA verbs 层带宽测试 pod x2 (perftest: ib_send_bw / ib_write_bw / ib_write_lat)
+# 通过 podAntiAffinity 自动落到 2 个不同的 eRDMA 节点, 无需写死 nodeName.
+# 若集群 erdma 节点标签不同, 改 nodeSelector.
+#
+#   kubectl apply -f perftest-pods.yaml
+#   kubectl wait --for=condition=Ready pod -l app=erdma-perftest --timeout=300s
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: erdma-perftest
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: erdma-perftest}
+  template:
+    metadata:
+      labels: {app: erdma-perftest}
+    spec:
+      nodeSelector:
+        aliyun.accelerator/erdma: "true"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {app: erdma-perftest}
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: perftest
+          image: registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "infinity"]
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]
+          resources:
+            limits:
+              aliyun/erdma: "1"
