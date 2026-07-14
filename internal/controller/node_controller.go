@@ -188,7 +188,10 @@ func (r *NodeReconciler) backfillEriTags(devices []networkv1.ERdmaDevice, instan
 		for _, id := range pending {
 			r.taggedENIs.Delete(id)
 		}
-		logger.Error(err, "failed to backfill terway-compat tags on existing ERIs", "enis", pending, "instanceID", instanceID)
+		// Best-effort: terway does not strictly depend on these tags, and the
+		// managed RAM role may lack ecs:TagResources. Log a warning instead of
+		// an error (which would emit a noisy stack trace) and retry next reconcile.
+		logger.Info("WARNING: skipped terway-compat tag backfill on existing ERIs (best-effort, will retry)", "enis", pending, "instanceID", instanceID, "error", err.Error())
 		return
 	}
 	logger.Info("backfilled terway-compat tags on existing ERIs", "enis", pending, "instanceID", instanceID)
