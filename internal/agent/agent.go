@@ -131,11 +131,15 @@ func (a *Agent) Run() error {
 	}
 	agentLog.Info("eri device info", "erdmaDevices", erdmaDevices)
 	// 3. config pnet for rdma device
+	// SMC-R pnet setup is best-effort: it is only an acceleration path. On
+	// images where the SMC module is not usable (e.g. the MLNX OFED smc.ko is
+	// incompatible with smc-tools, so smc_pnet reports "SMC module not loaded"),
+	// skip it with a warning instead of failing the whole agent, so basic eRDMA
+	// and the device plugin still come up.
 	for _, deviceInfo := range erdmaDevices {
 		if deviceInfo.Capabilities&types.ERDMA_CAP_SMC_R != 0 {
-			err = drivers.ConfigSMCPnetForDevice(deviceInfo)
-			if err != nil {
-				return fmt.Errorf("config smc pnet for device failed, err: %v", err)
+			if err = drivers.ConfigSMCPnetForDevice(deviceInfo); err != nil {
+				agentLog.Info("WARNING: skip SMC-R pnet config for device (best-effort)", "device", deviceInfo.Name, "error", err.Error())
 			}
 		}
 	}
