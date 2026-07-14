@@ -193,7 +193,8 @@ func (e *EriClient) ConvertPrimaryENI(primaryENI string, instanceID string, queu
 		return err
 	}
 	if err := e.EnsureEriTags([]string{primaryENI}, instanceID); err != nil {
-		eriLog.Error(err, "failed to ensure tags on primary ENI after RDMA convert", "eni", primaryENI)
+		// Best-effort terway-compat tagging; not fatal to RDMA conversion.
+		eriLog.Info("WARNING: skipped terway-compat tags on primary ENI after RDMA convert (best-effort)", "eni", primaryENI, "error", err.Error())
 	}
 	return nil
 }
@@ -299,7 +300,7 @@ func (e *EriClient) SelectERIs(instanceID string) ([]*types.ERI, error) {
 	// Failure is non-fatal: ERDMA still works, terway compatibility is just
 	// degraded until the next reconcile retries.
 	if err := e.EnsureEriTags(lo.Map(selectEriList, func(item *types.ERI, _ int) string { return item.ID }), instanceID); err != nil {
-		eriLog.Error(err, "failed to ensure tags on selected ERIs", "instanceID", instanceID)
+		eriLog.Info("WARNING: skipped terway-compat tags on selected ERIs (best-effort)", "instanceID", instanceID, "error", err.Error())
 	}
 	return selectEriList, nil
 }
