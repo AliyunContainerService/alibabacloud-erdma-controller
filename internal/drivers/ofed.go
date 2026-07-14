@@ -42,6 +42,7 @@ func (d *OFEDDriver) Install() error {
 	if err != nil {
 		return fmt.Errorf("install erdma driver failed: %v", err)
 	}
+	loadNvidiaPeermem(execMethod)
 	return nil
 }
 

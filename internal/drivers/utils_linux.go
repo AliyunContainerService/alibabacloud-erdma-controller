@@ -105,6 +105,23 @@ func containerExec(cmd string) (string, error) {
 	return string(output), nil
 }
 
+// loadNvidiaPeermem best-effort loads the nvidia-peermem module to enable
+// GPUDirect RDMA on GPU nodes. It is only attempted when the module is present
+// on the system; whether the load ultimately succeeds or fails does not affect
+// eRDMA, so the outcome is only logged and never returned as an error. The exec
+// function is passed in so each driver uses its own host/container context.
+func loadNvidiaPeermem(exec func(string) (string, error)) {
+	if _, err := exec("modinfo nvidia_peermem > /dev/null 2>&1"); err != nil {
+		driverLog.Info("nvidia-peermem module not present, skip loading")
+		return
+	}
+	if out, err := exec("modprobe nvidia_peermem"); err != nil {
+		driverLog.Info("nvidia-peermem load failed (ignored)", "output", out, "err", err.Error())
+		return
+	}
+	driverLog.Info("nvidia-peermem loaded for GPUDirect RDMA")
+}
+
 func EnsureSMCR() error {
 	_, err := containerExec("modprobe smc")
 	if err != nil {

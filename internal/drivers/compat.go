@@ -40,6 +40,7 @@ func (d *CompatDriver) Install() error {
 	if err != nil {
 		return fmt.Errorf("install erdma driver failed: %v", err)
 	}
+	loadNvidiaPeermem(containerExec)
 	return EnsureSMCR()
 }
 
