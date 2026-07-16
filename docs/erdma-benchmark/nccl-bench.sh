@@ -9,7 +9,7 @@
 #   ./nccl-bench.sh <podA> <podB>         # 指定 pod 名
 #   NS=default GPUS_PER_NODE=8 ./nccl-bench.sh
 #
-# 依赖: kubectl 能访问集群; 镜像 registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl
+# 依赖: kubectl 能访问集群; 镜像 registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl-slim
 set -euo pipefail
 
 NS="${NS:-default}"
