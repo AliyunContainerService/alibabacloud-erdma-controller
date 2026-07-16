@@ -26,7 +26,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: perftest
-          image: registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl
+          image: registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl-slim
           imagePullPolicy: IfNotPresent
           command: ["sleep", "infinity"]
           securityContext:

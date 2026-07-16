@@ -20,28 +20,32 @@
 ## 测试镜像
 
 ```text
-registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl
+registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl-slim
 ```
 
-一个镜像同时含 perftest 和 NCCL 测试所需的一切：
+一个镜像同时含 perftest 和 NCCL 测试所需的一切（~250MB）：
 
 | 组件 | 内容 |
 |------|------|
-| 基础 | Ubuntu 22.04 + CUDA 12.2 runtime + PyTorch 2.6 |
-| eRDMA verbs | 阿里云官方 `rdma-core`（含 **erdma provider**）+ `perftest`（ib_send_bw / ib_write_bw / ib_write_lat）|
-| NCCL | **2.27.7+cuda12.9**（支持 Blackwell sm_120；替换了基础镜像自带的 2.21.5）|
-| nccl-tests | 全部 `*_perf` 二进制，用 compute_90 PTX 编译（驱动 JIT 到 sm_120）|
+| 基础 | Ubuntu 22.04 + CUDA runtime |
+| eRDMA verbs | `rdma-core`（含 **erdma provider**）+ `perftest`（ib_send_bw / ib_write_bw / ib_write_lat）+ `ibv_devinfo` |
+| NCCL | `libnccl` + 全部 `nccl-tests` `*_perf` 二进制 |
 | 启动 | OpenMPI 4.1.2 + openssh（跨 pod mpirun）|
+
+> CUDA driver（`libcuda`）由 nvidia-container-runtime 从宿主挂入，不打进镜像。
 
 ### 重新构建镜像
 
-见 [`Dockerfile`](./Dockerfile)。**必须在 x86_64 机器上构建**（含 CUDA，arm 上 qemu 极慢）；建议在 **cn-hangzhou 的 ECS** 上走 VPC 内网 build+push：
+`:nccl-slim` 派生自完整镜像 `:nccl`（见 [`Dockerfile`](./Dockerfile)，含 nccl-tests 源码编译，**必须 x86_64**）。构建 slim 见 [`nccl-slim/`](./nccl-slim)（多阶段，从 `:nccl` 里挑运行期文件，本地有 `:nccl` 即可）：
 
 ```bash
-# nccl-tests 源码需放在构建上下文的 ./nccl-tests 下（避免 ECS clone github 超时）：
+# 1) 首次 / NCCL 版本变更时，先构建完整镜像 :nccl
 git clone --branch v2.13.10 --depth 1 https://github.com/NVIDIA/nccl-tests.git nccl-tests && rm -rf nccl-tests/.git
-docker build -t registry-vpc.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl .
-docker push  registry-vpc.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl
+docker build -t registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl .
+
+# 2) 构建 slim（arm 机器把 docker build 换成 docker buildx build --platform linux/amd64 ... --push）
+cd nccl-slim
+docker build -t registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl-slim . && docker push $_
 ```
 
 ---
@@ -210,7 +214,8 @@ mpirun --allow-run-as-root -np 2 -H <IPA>:1,<IPB>:1 \
 
 | 文件 | 用途 |
 |------|------|
-| [`Dockerfile`](./Dockerfile) | 测试镜像构建 |
+| [`nccl-slim/`](./nccl-slim) | 测试镜像 `:nccl-slim` 构建（`Dockerfile` + `assemble.sh`，派生自 `:nccl`，~250MB）|
+| [`Dockerfile`](./Dockerfile) | 完整镜像 `:nccl` 构建（slim 的来源，含 nccl-tests 源码编译）|
 | [`perftest-pods.yaml`](./perftest-pods.yaml) | verbs 层 perftest 2-pod |
 | [`nccl-pods.yaml`](./nccl-pods.yaml) | NCCL 测试 2-pod（privileged + GPU + erdma）|
 | [`nccl-graph.xml`](./nccl-graph.xml) | 双网卡自定义 NCCL 拓扑图 |
