@@ -105,6 +105,24 @@ func containerExec(cmd string) (string, error) {
 	return string(output), nil
 }
 
+// nodeExec returns the exec context for driver install and kernel-module
+// operations, picked by the node OS. On a container-optimized OS (lifsea) the
+// agent already runs with the host userspace, so containerExec is correct;
+// everywhere else enter the host namespaces via hostExec so the host toolchain
+// is used. This matters most for module loading: modules live in the host's
+// /lib/modules (a hostPath mount) and load into the shared host kernel, so they
+// must be decompressed by the host's kmod. Using the host kmod avoids
+// "could not insert 'erdma': Exec format error" when the host ships
+// ZSTD-compressed modules (e.g. Ubuntu 24.04, kmod +ZSTD) that the agent
+// container's older kmod (e.g. Alibaba Linux 8, kmod-25, only +XZ +ZLIB)
+// cannot decompress.
+func nodeExec() func(string) (string, error) {
+	if isContainerOS() {
+		return containerExec
+	}
+	return hostExec
+}
+
 // loadNvidiaPeermem best-effort loads the nvidia-peermem module to enable
 // GPUDirect RDMA on GPU nodes. It is only attempted when the module is present
 // on the system; whether the load ultimately succeeds or fails does not affect
@@ -122,8 +140,8 @@ func loadNvidiaPeermem(exec func(string) (string, error)) {
 	driverLog.Info("nvidia-peermem loaded for GPUDirect RDMA")
 }
 
-func EnsureSMCR() error {
-	_, err := containerExec("modprobe smc")
+func EnsureSMCR(exec func(string) (string, error)) error {
+	_, err := exec("modprobe smc")
 	if err != nil {
 		return err
 	}

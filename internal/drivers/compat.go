@@ -36,12 +36,13 @@ func (d *CompatDriver) Install() error {
 			}
 		}
 	}
-	_, err := containerExec("if [ -f /sys/module/erdma/parameters/compat_mode ] && [ \"N\" == $(cat /sys/module/erdma/parameters/compat_mode) ]; then rmmod erdma && modprobe erdma compat_mode=Y; else modprobe erdma compat_mode=Y; fi")
+	execMethod := nodeExec()
+	_, err := execMethod("if [ -f /sys/module/erdma/parameters/compat_mode ] && [ \"N\" == $(cat /sys/module/erdma/parameters/compat_mode) ]; then rmmod erdma && modprobe erdma compat_mode=Y; else modprobe erdma compat_mode=Y; fi")
 	if err != nil {
 		return fmt.Errorf("install erdma driver failed: %v", err)
 	}
-	loadNvidiaPeermem(containerExec)
-	return EnsureSMCR()
+	loadNvidiaPeermem(execMethod)
+	return EnsureSMCR(execMethod)
 }
 
 func (d *CompatDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error) {

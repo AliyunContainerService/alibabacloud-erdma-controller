@@ -22,10 +22,7 @@ type OFEDDriver struct{}
 func (d *OFEDDriver) SetERdmaInstallerVersion(_ string) {}
 
 func (d *OFEDDriver) Install() error {
-	execMethod := hostExec
-	if isContainerOS() {
-		execMethod = containerExec
-	}
+	execMethod := nodeExec()
 	exist := driverExists()
 	if !exist {
 		_, err := execMethod(gpuInstallScript)
