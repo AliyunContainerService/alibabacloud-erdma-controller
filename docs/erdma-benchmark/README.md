@@ -23,13 +23,13 @@
 registry.cn-hangzhou.aliyuncs.com/wangbs/erdma:nccl-slim
 ```
 
-一个镜像同时含 perftest 和 NCCL 测试所需的一切（~250MB）：
+一个镜像同时含 perftest 和 NCCL 测试所需的一切（拉取 ~400MB，解压 ~690MB）：
 
 | 组件 | 内容 |
 |------|------|
 | 基础 | Ubuntu 22.04 + CUDA runtime |
 | eRDMA verbs | `rdma-core`（含 **erdma provider**）+ `perftest`（ib_send_bw / ib_write_bw / ib_write_lat）+ `ibv_devinfo` |
-| NCCL | `libnccl` + 全部 `nccl-tests` `*_perf` 二进制 |
+| NCCL | `libnccl` **2.27.7+cuda12.9**（Blackwell/sm_120 必需，本镜像自己从 NVIDIA CUDA repo 装）+ 全部 `nccl-tests` `*_perf` 二进制 |
 | 启动 | OpenMPI 4.1.2 + openssh（跨 pod mpirun）|
 
 > CUDA driver（`libcuda`）由 nvidia-container-runtime 从宿主挂入，不打进镜像。
@@ -178,7 +178,12 @@ mpirun --allow-run-as-root -np 2 -H <IPA>:1,<IPB>:1 \
 
 ## 六、已知坑
 
-1. **Blackwell / 新架构 GPU（sm_120）**：基础镜像自带的 NCCL 2.21.5 + CUDA 12.2 无 sm_120 kernel，单卡都会报 `Cuda failure 'invalid argument'`。镜像已修复：装 NCCL ≥2.27，nccl-tests 用 `compute_90` PTX 编译靠驱动 JIT。换更新架构时同理。
+1. **Blackwell / 新架构 GPU（sm_120）**：基础镜像自带的 NCCL 2.21.5 + CUDA 12.2 无 sm_120 kernel，单卡都会报 `Cuda failure 'invalid argument'`（`enqueue.cc:60`）。`:nccl-slim` 已修复：final stage 自己从 NVIDIA CUDA repo 装 NCCL 2.27.7，nccl-tests 用 `compute_90` PTX 编译靠驱动 JIT。换更新架构时同理。
+   > 注意 **已推送的 `:nccl` 镜像里并没有 2.27.7**：它的 `libnccl2` 是 2.19.3 且被 dpkg hold，`site-packages` 里还有
+   > PyTorch 自带的 2.21.5，`LD_LIBRARY_PATH` 也没有本仓 `Dockerfile` 里那行覆盖 —— 即镜像早于当前 `Dockerfile`，两者不一致。
+   > 所以 slim **不能**从 `:nccl` 拷 libnccl；`assemble.sh` 连 `ldd` 闭包里的 `libnccl.so.*` 都要排除，否则又会把 2.21.5
+   > 带进来盖掉 apt 装的版本。`nccl-slim/Dockerfile` 有构建期断言拦这一类回归。要让 `:nccl` 自己也名副其实，需按当前
+   > `Dockerfile` 重建它（apt 装 2.27.7 前先 `apt-mark unhold libnccl2`）。
 2. **GID index 因设备而异**：erdma_0 与 erdma_1 的 RoCEv2-IPv4 GID index 可能不同（本例 2 vs 1）。别硬编码，用 `NCCL_IB_GID_INDEX=-1 + NCCL_IB_ADDR_RANGE` 自动选。
 3. **GDR 默认不开**：GPU↔网卡 PCIe 距离 8（SYS 级）超过默认 GDR 阈值，NCCL 会回退到主机内存中转。必须 `NCCL_NET_GDR_LEVEL=SYS`。NCCL 2.27 用 dmabuf，不需要 nvidia-peermem。
 4. **无 NVLink 机型**：若 `nvidia-smi nvlink -s` 为空（如 RTX PRO 5000），节点内 8 卡 all_reduce 走 PCIe/主机，intra-node 成为瓶颈；此时**堆网卡也压不出双网卡聚合收益**。要看到双网卡真正加速，需 **有 NVLink + GPU/网卡 rail 对齐** 的机型。
@@ -214,7 +219,7 @@ mpirun --allow-run-as-root -np 2 -H <IPA>:1,<IPB>:1 \
 
 | 文件 | 用途 |
 |------|------|
-| [`nccl-slim/`](./nccl-slim) | 测试镜像 `:nccl-slim` 构建（`Dockerfile` + `assemble.sh`，派生自 `:nccl`，~250MB）|
+| [`nccl-slim/`](./nccl-slim) | 测试镜像 `:nccl-slim` 构建（`Dockerfile` + `assemble.sh`，派生自 `:nccl`，拉取 ~400MB）|
 | [`Dockerfile`](./Dockerfile) | 完整镜像 `:nccl` 构建（slim 的来源，含 nccl-tests 源码编译）|
 | [`perftest-pods.yaml`](./perftest-pods.yaml) | verbs 层 perftest 2-pod |
 | [`nccl-pods.yaml`](./nccl-pods.yaml) | NCCL 测试 2-pod（privileged + GPU + erdma）|

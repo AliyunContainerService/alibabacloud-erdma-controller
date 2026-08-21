@@ -25,3 +25,6 @@ go.work
 *.swp
 *.swo
 *~
+
+# erdma-benchmark: :nccl 构建上下文里 clone 进来的 nccl-tests 源码, 不入库
+docs/erdma-benchmark/nccl-tests/
