@@ -115,6 +115,11 @@ func probeDeviceWithRetry(ctx context.Context, driver drivers.ERdmaDriver, eri *
 	return deviceInfo, nil
 }
 
+// Both native and compat eRDMA drivers support the RDMA-CM userspace device.
+func allocRdmaCMForDriver(driverName string) bool {
+	return driverName == "default" || driverName == "compat"
+}
+
 func (a *Agent) Run() error {
 	go stackTriger()
 	var err error
@@ -187,7 +192,7 @@ func (a *Agent) Run() error {
 		}
 	}
 	// 4. enable deviceplugin
-	devicePlugin, err := deviceplugin.NewERDMADevicePlugin(erdmaDevices, a.allocAllDevices, a.devicepluginPreStart, a.driver.Name() == "default")
+	devicePlugin, err := deviceplugin.NewERDMADevicePlugin(erdmaDevices, a.allocAllDevices, a.devicepluginPreStart, allocRdmaCMForDriver(a.driver.Name()))
 	if err != nil {
 		return fmt.Errorf("new erdma device plugin failed, err: %v", err)
 	}

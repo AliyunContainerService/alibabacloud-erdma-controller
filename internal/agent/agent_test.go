@@ -34,6 +34,26 @@ func immediateBackoff() wait.Backoff {
 	return wait.Backoff{Steps: 3}
 }
 
+func TestAllocRdmaCMForDriver(t *testing.T) {
+	tests := []struct {
+		driver string
+		want   bool
+	}{
+		{driver: "default", want: true},
+		{driver: "compat", want: true},
+		{driver: "ofed", want: false},
+		{driver: "fake", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.driver, func(t *testing.T) {
+			if got := allocRdmaCMForDriver(tt.driver); got != tt.want {
+				t.Fatalf("allocRdmaCMForDriver(%q) = %v, want %v", tt.driver, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProbeDeviceWithRetryEventuallySucceeds(t *testing.T) {
 	linkNotReady := fmt.Errorf("get erdma link failed: %w", drivers.ErrERdmaLinkNotFound)
 	driver := &retryTestDriver{failures: []error{linkNotReady, linkNotReady}}
