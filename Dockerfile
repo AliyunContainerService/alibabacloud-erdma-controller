@@ -8,17 +8,20 @@ WORKDIR /workspace
 # Copy the Go Modules manifests and cache dependencies
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy the Go source code and build the binaries
 COPY cmd/ ./cmd/
 COPY api/ ./api/
 COPY internal/ ./internal/
 
-RUN export CGO_ENABLED=0; export GOOS=${TARGETOS:-linux}; export GOARCH=${TARGETARCH}; \
-    go build -a -o manager ./cmd/controller/main.go && \
-    go build -a -o agent ./cmd/agent/main.go && \
-    go build -a -o smcr_init ./cmd/smcr_init/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    export CGO_ENABLED=0; export GOOS=${TARGETOS:-linux}; export GOARCH=${TARGETARCH}; \
+    go build -o manager ./cmd/controller/main.go && \
+    go build -o agent ./cmd/agent/main.go && \
+    go build -o smcr_init ./cmd/smcr_init/main.go
 
 # Use distroless as minimal base image to package the manager binary
 FROM gcr.io/distroless/static:nonroot AS controller

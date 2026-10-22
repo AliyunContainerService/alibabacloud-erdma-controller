@@ -13,28 +13,16 @@ func init() {
 	Register(defaultGPUDriver, &OFEDDriver{})
 }
 
-var gpuInstallScript = `
-cd /tmp && rm -f env_setup.sh && wget http://mirrors.cloud.aliyuncs.com/erdma/env_setup.sh && bash env_setup.sh --egs
-`
+type OFEDDriver struct {
+	erdmaInstallerVersion string
+}
 
-type OFEDDriver struct{}
-
-func (d *OFEDDriver) SetERdmaInstallerVersion(_ string) {}
+func (d *OFEDDriver) SetERdmaInstallerVersion(version string) {
+	d.erdmaInstallerVersion = version
+}
 
 func (d *OFEDDriver) Install() error {
-	execMethod := nodeExec()
-	exist := driverExists()
-	if !exist {
-		_, err := execMethod(gpuInstallScript)
-		if err != nil {
-			return err
-		}
-	}
-	if err := ensureErdmaModule(execMethod, "Y"); err != nil {
-		return fmt.Errorf("install erdma driver failed: %v", err)
-	}
-	loadNvidiaPeermem(execMethod)
-	return nil
+	return installAndConfigureDriver(d.Name(), d.erdmaInstallerVersion)
 }
 
 func (d *OFEDDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error) {

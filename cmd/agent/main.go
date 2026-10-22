@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/agent"
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/drivers"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -33,8 +34,8 @@ func main() {
 		"Only manager on-node eri resources without using OpenAPI and access key")
 	flag.StringVar(&exposedLocalERIs, "exposed-local-eris", "",
 		"allocate specific ERI from existing ERI to pods for each instance")
-	flag.StringVar(&erdmaInstallerVersion, "erdma-installer-version", "1.5.9",
-		"erdma installer version")
+	flag.StringVar(&erdmaInstallerVersion, "erdma-installer-version", drivers.DefaultErdmaInstallerVersion,
+		"erdma installer package version for missing drivers (does not upgrade installed drivers)")
 	flag.IntVar(&jumboFrameMTU, "jumbo-frame-mtu", 8500,
 		"MTU value to set on ERDMA network interfaces when jumbo frame is enabled")
 	flag.Parse()

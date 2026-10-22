@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	Register("compat", &CompatDriver{})
+	Register(compatDriver, &CompatDriver{})
 }
 
 type CompatDriver struct {
@@ -22,26 +22,7 @@ func (d *CompatDriver) SetERdmaInstallerVersion(version string) {
 }
 
 func (d *CompatDriver) Install() error {
-	exist := driverExists()
-	if !exist {
-		if isContainerOS() {
-			err := containerOSDriverInstall(true)
-			if err != nil {
-				return err
-			}
-		} else {
-			_, err := hostExec(getInstallScript(true, d.erdmaInstallerVersion))
-			if err != nil {
-				return err
-			}
-		}
-	}
-	execMethod := nodeExec()
-	if err := ensureErdmaModule(execMethod, "Y"); err != nil {
-		return fmt.Errorf("install erdma driver failed: %v", err)
-	}
-	loadNvidiaPeermem(execMethod)
-	return EnsureSMCR(execMethod)
+	return installAndConfigureDriver(d.Name(), d.erdmaInstallerVersion)
 }
 
 func (d *CompatDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error) {
@@ -86,5 +67,5 @@ func (d *CompatDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, erro
 }
 
 func (d *CompatDriver) Name() string {
-	return "compat"
+	return compatDriver
 }

@@ -41,6 +41,10 @@ spec:
             - --prefer-driver
             - {{ .Values.agent.preferDriver }}
             {{ end }}
+            {{ if .Values.agent.erdmaInstallerVersion }}
+            - --erdma-installer-version
+            - {{ .Values.agent.erdmaInstallerVersion | quote }}
+            {{ end }}
             {{ if .Values.agent.allocateAllDevices }}
             - --allocate-all-devices
             {{ end }}

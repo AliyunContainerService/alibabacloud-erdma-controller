@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/utils"
@@ -57,21 +58,25 @@ func checkExpose(instanceID string, exposedLocalERIs []string, rdmaDevice string
 	}
 	return false, nil
 }
-func driverExists() bool {
-	if isContainerOS() {
-		_, err := containerExec("modinfo erdma")
-		if err != nil {
-			driverLog.Info("driver not exists", "checklog", err)
-			return false
-		}
-		return true
-	}
-	_, err := hostExec("stat /bin/eadm && modinfo erdma")
+
+// installAndConfigureDriver holds the shared lock through installation and
+// module configuration, including the reuse path.
+func installAndConfigureDriver(profile, version string) error {
+	started := time.Now()
+	driverLog.Info("starting eRDMA setup", "profile", profile)
+	output, err := nodeExec()(getDriverSetupScript(profile, version, isContainerOS()))
+	driverLog.Info("eRDMA setup finished", "profile", profile, "success", err == nil, "duration", time.Since(started).String())
 	if err != nil {
-		driverLog.Info("driver not exists", "checklog", err)
-		return false
+		return fmt.Errorf("eRDMA setup failed: %w", err)
 	}
-	return true
+	// CombinedOutput buffers these result summaries until setup finishes;
+	// their log timestamps are not the individual stage execution times.
+	for _, line := range strings.Split(output, "\n") {
+		if msg, ok := strings.CutPrefix(line, "erdma-controller: "); ok {
+			driverLog.Info(msg, "profile", profile)
+		}
+	}
+	return nil
 }
 
 func isContainerOS() bool {
@@ -98,6 +103,10 @@ func hostExec(cmd string) (string, error) {
 }
 
 func containerExec(cmd string) (string, error) {
+	// Lifsea runs the agent with the host userspace already, and its OS forbids
+	// nsenter into PID 1's namespaces, so run the command directly (as before the
+	// unified flow). Lifsea therefore does not perform the host-cgroup migration
+	// that the normal-OS installer uses.
 	output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("exec error: %v, output: %s", err, string(output))
@@ -121,51 +130,6 @@ func nodeExec() func(string) (string, error) {
 		return containerExec
 	}
 	return hostExec
-}
-
-// loadNvidiaPeermem best-effort loads the nvidia-peermem module to enable
-// GPUDirect RDMA on GPU nodes. It is only attempted when the module is present
-// on the system; whether the load ultimately succeeds or fails does not affect
-// eRDMA, so the outcome is only logged and never returned as an error. The exec
-// function is passed in so each driver uses its own host/container context.
-func loadNvidiaPeermem(exec func(string) (string, error)) {
-	if _, err := exec("modinfo nvidia_peermem > /dev/null 2>&1"); err != nil {
-		driverLog.Info("nvidia-peermem module not present, skip loading")
-		return
-	}
-	if out, err := exec("modprobe nvidia_peermem"); err != nil {
-		driverLog.Info("nvidia-peermem load failed (ignored)", "output", out, "err", err.Error())
-		return
-	}
-	driverLog.Info("nvidia-peermem loaded for GPUDirect RDMA")
-}
-
-// ensureErdmaModule makes sure the erdma kernel module is loaded with the
-// requested compat_mode ("Y" or "N"). It reloads the module whenever the
-// currently loaded one does not match the request. This crucially covers the
-// case where an in-box erdma (the kernel-bundled module, which does not expose
-// the compat_mode parameter) was auto-loaded at boot and shadows the
-// installer/DKMS module: a plain `modprobe` would then be a no-op, leaving the
-// wrong module loaded — it presents a virtual device with no NUMA node and the
-// probe later fails. Removing it first forces modprobe to load the installer
-// module (which takes precedence via updates/dkms in modules.dep).
-func ensureErdmaModule(exec func(string) (string, error), compatMode string) error {
-	// rmmod when: module is loaded AND (compat_mode param absent -> wrong
-	// module, or present but not the requested value). Then always modprobe
-	// with the requested compat_mode.
-	script := fmt.Sprintf(`cm=/sys/module/erdma/parameters/compat_mode; `+
-		`if [ -d /sys/module/erdma ] && { [ ! -f "$cm" ] || [ "%[1]s" != "$(cat "$cm")" ]; }; then rmmod erdma; fi; `+
-		`modprobe erdma compat_mode=%[1]s`, compatMode)
-	_, err := exec(script)
-	return err
-}
-
-func EnsureSMCR(exec func(string) (string, error)) error {
-	_, err := exec("modprobe smc")
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func GetERdmaDevPathsFromRdmaLink(rdmaLink *netlink.RdmaLink) ([]string, error) {
