@@ -3,6 +3,7 @@ package drivers
 import (
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -11,6 +12,7 @@ import (
 const (
 	defaultGPUDriver = "ofed"
 	defaultDriver    = "default"
+	compatDriver     = "compat"
 )
 
 var (
@@ -36,6 +38,10 @@ func Register(name string, driver ERdmaDriver) {
 }
 
 func GetDriver(name, erdmaInstallerVersion string) ERdmaDriver {
+	// The version becomes part of a shell command and a package URL.
+	if erdmaInstallerVersion != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`).MatchString(erdmaInstallerVersion) {
+		panic(fmt.Sprintf("invalid erdma installer version %q", erdmaInstallerVersion))
+	}
 	if name != "" {
 		driver := drivers[name]
 		if driver == nil {

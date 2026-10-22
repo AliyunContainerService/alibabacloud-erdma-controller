@@ -23,7 +23,12 @@ agent:
     pullPolicy: Always
     # Overrides the image tag whose default is the chart appVersion.
     tag: "latest"
+  # Installation profile, not three kernel modes: default=Standard,
+  # compat/ofed=Compat. Empty auto-selects ofed when nvidia-smi is present.
   preferDriver: ""
+  # Package version for first installation, including ofed. Existing drivers
+  # are reused, not upgraded. All lifsea profiles use kernel-modules instead.
+  erdmaInstallerVersion: "latest"
   allocateAllDevices: false
   jumboFrameMTU: 8500
   # format: 
@@ -85,4 +90,3 @@ credentials:
   type: ""
   accessKeyID: ""
   accessKeySecret: ""
-

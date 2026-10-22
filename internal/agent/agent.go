@@ -159,7 +159,7 @@ func (a *Agent) Run() error {
 	// 2. install eri driver
 	err = a.driver.Install()
 	if err != nil {
-		return fmt.Errorf("install eri driver failed, err: %v", err)
+		return fmt.Errorf("ensure eri driver failed: %w", err)
 	}
 	erdmaDevices := make([]*types.ERdmaDeviceInfo, 0)
 	for _, eriInfo := range eriInfos.Spec.Devices {

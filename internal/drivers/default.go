@@ -22,25 +22,7 @@ func (d *DefaultDriver) SetERdmaInstallerVersion(version string) {
 }
 
 func (d *DefaultDriver) Install() error {
-	exist := driverExists()
-	if !exist {
-		if isContainerOS() {
-			err := containerOSDriverInstall(false)
-			if err != nil {
-				return err
-			}
-		} else {
-			_, err := hostExec(getInstallScript(false, d.erdmaInstallerVersion))
-			if err != nil {
-				return err
-			}
-		}
-	}
-	execMethod := nodeExec()
-	if err := ensureErdmaModule(execMethod, "N"); err != nil {
-		return fmt.Errorf("install erdma driver failed: %v", err)
-	}
-	return EnsureSMCR(execMethod)
+	return installAndConfigureDriver(d.Name(), d.erdmaInstallerVersion)
 }
 
 func (d *DefaultDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, error) {
