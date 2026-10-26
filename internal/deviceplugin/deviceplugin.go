@@ -436,7 +436,11 @@ func (m *ERDMADevicePlugin) Serve() {
 	if err != nil {
 		klog.Fatalf("create kubelet socket watcher: %v", err)
 	}
-	defer watcher.Close()
+	defer func() {
+		if err := watcher.Close(); err != nil {
+			klog.Errorf("close kubelet socket watcher: %v", err)
+		}
+	}()
 	// Subscribe before registration so kubelet socket recreation is not missed.
 	if err := watcher.Add(pluginapi.DevicePluginPath); err != nil {
 		klog.Fatalf("watch device plugin directory: %v", err)

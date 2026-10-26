@@ -30,7 +30,8 @@ func waitSignal(t *testing.T, ch <-chan struct{}) {
 }
 
 func TestListAndWatchRecovery(t *testing.T) {
-	for _, mode := range []string{"initial send failure", "periodic send failure", "disconnect", "local stop", "old generation"} {
+	const oldGeneration = "old generation"
+	for _, mode := range []string{"initial send failure", "periodic send failure", "disconnect", "local stop", oldGeneration} {
 		t.Run(mode, func(t *testing.T) {
 			p := &ERDMADevicePlugin{Locker: &sync.Mutex{}, stop: make(chan struct{}), restartCh: make(chan struct{}, 1)}
 			ctx, cancel := context.WithCancel(context.Background())
@@ -46,15 +47,16 @@ func TestListAndWatchRecovery(t *testing.T) {
 				return nil
 			}}
 			done := make(chan struct{})
-			go func() { defer close(done); p.ListAndWatch(&pluginapi.Empty{}, stream) }()
+			var streamErr error
+			go func() { defer close(done); streamErr = p.ListAndWatch(&pluginapi.Empty{}, stream) }()
 			if mode != "initial send failure" {
 				waitSignal(t, sent)
 				switch mode {
 				case "disconnect":
 					cancel()
-				case "local stop", "old generation":
+				case "local stop", oldGeneration:
 					close(p.stop)
-					if mode == "old generation" {
+					if mode == oldGeneration {
 						p.Lock()
 						p.stop = make(chan struct{})
 						p.restartCh = make(chan struct{}, 1)
@@ -64,13 +66,16 @@ func TestListAndWatchRecovery(t *testing.T) {
 				}
 			}
 			waitSignal(t, done)
-			if mode == "local stop" || mode == "old generation" {
+			if mode == "local stop" || mode == oldGeneration {
 				select {
 				case <-p.restartCh:
 					t.Fatal("intentional shutdown requested recovery")
 				default:
 				}
 			} else {
+				if streamErr == nil {
+					t.Fatal("unexpected disconnect returned no error")
+				}
 				waitSignal(t, p.restartCh)
 			}
 		})
