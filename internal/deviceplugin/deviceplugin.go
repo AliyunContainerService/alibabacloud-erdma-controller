@@ -15,12 +15,12 @@ import (
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/drivers"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
+	"github.com/fsnotify/fsnotify"
 	"github.com/samber/lo"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
@@ -35,6 +35,7 @@ type ERDMADevicePlugin struct {
 	socket               string
 	server               *grpc.Server
 	stop                 chan struct{}
+	restartCh            chan struct{}
 	devices              map[string]*types.ERdmaDeviceInfo
 	allocAllDevices      bool
 	devicepluginPreStart bool
@@ -108,9 +109,13 @@ func (m *ERDMADevicePlugin) Start() error {
 	m.server = grpc.NewServer([]grpc.ServerOption{}...)
 	pluginapi.RegisterDevicePluginServer(m.server, m)
 
+	m.Lock()
 	m.stop = make(chan struct{}, 1)
+	m.restartCh = make(chan struct{}, 1)
+	m.Unlock()
+	server := m.server
 	go func() {
-		err := m.server.Serve(sock)
+		err := server.Serve(sock)
 		if err != nil {
 			klog.Errorf("error start device plugin server, %+v", err)
 		}
@@ -194,9 +199,9 @@ func (m *ERDMADevicePlugin) Stop() error {
 		return nil
 	}
 
+	close(m.stop)
 	m.server.Stop()
 	m.server = nil
-	close(m.stop)
 
 	return m.cleanup()
 }
@@ -211,7 +216,9 @@ func (m *ERDMADevicePlugin) Register(request pluginapi.RegisterRequest) error {
 
 	client := pluginapi.NewRegistrationClient(conn)
 
-	_, err = client.Register(context.Background(), &request)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = client.Register(ctx, &request)
 	if err != nil {
 		return err
 	}
@@ -219,7 +226,25 @@ func (m *ERDMADevicePlugin) Register(request pluginapi.RegisterRequest) error {
 }
 
 // ListAndWatch lists devices and update that list according to the health status
-func (m *ERDMADevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
+func (m *ERDMADevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) (retErr error) {
+	// Start replaces these channels; retain this server generation's signals.
+	m.Lock()
+	stop, restart := m.stop, m.restartCh
+	m.Unlock()
+	defer func() {
+		// Stop closes stop before stopping gRPC. Only re-register if we still
+		// intend to serve, regardless of why kubelet's stream disconnected.
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		klog.Warningf("ListAndWatch ended, requesting re-registration: %v", retErr)
+		select {
+		case restart <- struct{}{}:
+		default:
+		}
+	}()
 	var devs []*pluginapi.Device
 
 	for _, d := range m.devices {
@@ -239,15 +264,18 @@ func (m *ERDMADevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DeviceP
 		return err
 	}
 	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			err := s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 			if err != nil {
-				klog.Errorf("error send device informance: error: %v", err)
+				return err
 			}
-		case <-m.stop:
+		case <-stop:
 			return nil
+		case <-s.Context().Done():
+			return s.Context().Err()
 		}
 	}
 }
@@ -347,44 +375,73 @@ func (m *ERDMADevicePlugin) cleanup() error {
 	return nil
 }
 
-func (m *ERDMADevicePlugin) watchKubeletRestart() {
-	wait.Until(func() {
-		_, err := os.Stat(m.socket)
-		if err == nil {
-			return
+func (m *ERDMADevicePlugin) watchKubeletRestart(watcher *fsnotify.Watcher) {
+	for {
+		// Retry a failed registration even if kubelet.sock is not recreated.
+		var retry <-chan time.Time
+		if m.server == nil {
+			retry = time.After(5 * time.Second)
 		}
-		if os.IsNotExist(err) {
-			klog.Infof("device plugin socket %s removed, restarting.", m.socket)
-			err := m.Stop()
-			if err != nil {
-				klog.Errorf("stop current device plugin server with error: %v", err)
+		select {
+		case <-m.restartCh:
+		case <-retry:
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
 			}
-			err = m.Start()
-			if err != nil {
-				klog.Fatalf("error restart device plugin after kubelet restart %+v", err)
+			// Ignore removal of our own socket during a local restart.
+			if event.Name != pluginapi.KubeletSocket || event.Op&fsnotify.Create == 0 {
+				continue
 			}
-			err = m.Register(
-				pluginapi.RegisterRequest{
-					Version:      pluginapi.Version,
-					Endpoint:     path.Base(m.socket),
-					ResourceName: types.ResourceName,
-					Options: &pluginapi.DevicePluginOptions{
-						PreStartRequired: m.devicepluginPreStart,
-					},
+			klog.Infof("kubelet socket created, re-registering")
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			klog.Fatalf("watch kubelet socket: %v", err)
+		}
+		err := m.Stop()
+		if err != nil {
+			klog.Errorf("stop current device plugin server with error: %v", err)
+		}
+		err = m.Start()
+		if err != nil {
+			klog.Errorf("error restart device plugin: %v", err)
+			continue
+		}
+		err = m.Register(
+			pluginapi.RegisterRequest{
+				Version:      pluginapi.Version,
+				Endpoint:     path.Base(m.socket),
+				ResourceName: types.ResourceName,
+				Options: &pluginapi.DevicePluginOptions{
+					PreStartRequired: m.devicepluginPreStart,
 				},
-			)
-			if err != nil {
-				klog.Fatalf("error register device plugin after kubelet restart %+v", err)
+			},
+		)
+		if err != nil {
+			klog.Errorf("error register device plugin: %v", err)
+			if stopErr := m.Stop(); stopErr != nil {
+				klog.Errorf("stop device plugin: %v", stopErr)
 			}
-			return
+			continue
 		}
-		klog.Fatalf("error stat socket: %+v", err)
-	}, time.Second*10, make(chan struct{}, 1))
+		klog.Infof("Registered device plugin with Kubelet")
+	}
 }
 
 // Serve starts the gRPC server and register the device plugin to Kubelet
 func (m *ERDMADevicePlugin) Serve() {
-	err := m.Start()
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		klog.Fatalf("create kubelet socket watcher: %v", err)
+	}
+	defer watcher.Close()
+	// Subscribe before registration so kubelet socket recreation is not missed.
+	if err := watcher.Add(pluginapi.DevicePluginPath); err != nil {
+		klog.Fatalf("watch device plugin directory: %v", err)
+	}
+	err = m.Start()
 	if err != nil {
 		klog.Fatalf("Could not start device plugin: %v", err)
 	}
@@ -406,7 +463,8 @@ func (m *ERDMADevicePlugin) Serve() {
 		if stopErr != nil {
 			klog.Fatalf("stop current device plugin server with error: %v", stopErr)
 		}
+	} else {
+		klog.Infof("Registered device plugin with Kubelet")
 	}
-	klog.Infof("Registered device plugin with Kubelet")
-	m.watchKubeletRestart()
+	m.watchKubeletRestart(watcher)
 }
