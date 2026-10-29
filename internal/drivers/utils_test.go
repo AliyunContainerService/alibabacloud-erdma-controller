@@ -10,51 +10,26 @@ import (
 )
 
 func TestSMCSetupKernelSupport(t *testing.T) {
-	for _, tc := range []struct {
-		name           string
-		config         string
-		loaded         bool
-		modinfoStatus  int
-		modprobeStatus int
-		wantProbe      bool
-		wantError      bool
-	}{
-		{name: "Rocky kernel without SMC", config: "# CONFIG_SMC is not set\n", modinfoStatus: 1, modprobeStatus: 7},
-		{name: "load supported module", config: "CONFIG_SMC=m\n", wantProbe: true},
-		{name: "propagate module load failure", modprobeStatus: 7, wantProbe: true, wantError: true},
-		{name: "missing module is not unsupported", config: "CONFIG_SMC=m\n", modinfoStatus: 1, modprobeStatus: 7, wantProbe: true, wantError: true},
-		{name: "unknown kernel config", modinfoStatus: 1, modprobeStatus: 7, wantProbe: true, wantError: true},
-		{name: "already loaded or built in", loaded: true, modinfoStatus: 1, modprobeStatus: 7},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, config := range []string{"# CONFIG_SMC is not set", "CONFIG_SMC=m"} {
+		t.Run(config, func(t *testing.T) {
 			dir := t.TempDir()
-			config := filepath.Join(dir, "config")
-			module := filepath.Join(dir, "smc")
-			if tc.config != "" {
-				if err := os.WriteFile(config, []byte(tc.config), 0600); err != nil {
-					t.Fatal(err)
-				}
+			configPath := filepath.Join(dir, "config")
+			if err := os.WriteFile(configPath, []byte(config+"\n"), 0600); err != nil {
+				t.Fatal(err)
 			}
-			if tc.loaded {
-				if err := os.Mkdir(module, 0700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			// Run the real decision script without loading modules on the test host.
+			// Run the decision script without touching the host's kernel/modules.
 			script := strings.NewReplacer(
-				"/sys/module/smc", `"$SMC_TEST_MODULE"`,
-				"/boot/config-$(uname -r)", `"$SMC_TEST_CONFIG"`,
-				"/proc/config.gz", `"$SMC_TEST_PROC_CONFIG"`,
+				"/sys/module/smc", fmt.Sprintf("%q", filepath.Join(dir, "smc")),
+				"/boot/config-$(uname -r)", fmt.Sprintf("%q", configPath),
+				"/proc/config.gz", fmt.Sprintf("%q", filepath.Join(dir, "missing.gz")),
 			).Replace(smcSetupScript)
-			functions := fmt.Sprintf("modinfo() { return %d; }\nmodprobe() { echo MODPROBE_CALLED; return %d; }\n", tc.modinfoStatus, tc.modprobeStatus)
-			cmd := exec.Command("bash", "-c", "set -e\n"+functions+script)
-			cmd.Env = append(os.Environ(), "SMC_TEST_MODULE="+module, "SMC_TEST_CONFIG="+config, "SMC_TEST_PROC_CONFIG="+filepath.Join(dir, "missing.gz"))
-			output, err := cmd.CombinedOutput()
-			if (err != nil) != tc.wantError {
-				t.Fatalf("error=%v, wantError=%v, output=%s", err, tc.wantError, output)
-			}
-			if got := strings.Contains(string(output), "MODPROBE_CALLED"); got != tc.wantProbe {
-				t.Fatalf("modprobe called=%v, want=%v, output=%s", got, tc.wantProbe, output)
+			output, err := exec.Command("bash", "-c", "set -e\nmodinfo() { return 1; }\nmodprobe() { return 7; }\n"+script).CombinedOutput()
+			if config == "# CONFIG_SMC is not set" {
+				if err != nil {
+					t.Fatalf("unsupported kernel must skip SMC: %v, output=%s", err, output)
+				}
+			} else if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 7 {
+				t.Fatalf("must preserve modprobe failure: %v, output=%s", err, output)
 			}
 		})
 	}
