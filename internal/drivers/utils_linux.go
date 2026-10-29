@@ -59,6 +59,15 @@ func checkExpose(instanceID string, exposedLocalERIs []string, rdmaDevice string
 	return false, nil
 }
 
+// smcRCapability reflects the module actually available in the running kernel,
+// including kernels where SMC is built in.
+func smcRCapability() types.ERdmaCAP {
+	if _, err := os.Stat("/sys/module/smc"); err == nil {
+		return types.ERDMA_CAP_SMC_R
+	}
+	return 0
+}
+
 // installAndConfigureDriver holds the shared lock through installation and
 // module configuration, including the reuse path.
 func installAndConfigureDriver(profile, version string) error {

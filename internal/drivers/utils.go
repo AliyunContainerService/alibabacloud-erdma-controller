@@ -127,6 +127,22 @@ else
 fi
 `
 
+// Only an explicit kernel configuration can prove SMC was not compiled in.
+const smcSetupScript = `stage='SMC configuration'
+if [ -d /sys/module/smc ]; then
+    echo 'erdma-controller: SMC already available'
+elif modinfo smc >/dev/null 2>&1; then
+    modprobe smc
+elif grep -qx '# CONFIG_SMC is not set' /boot/config-$(uname -r) 2>/dev/null ||
+     zgrep -qx '# CONFIG_SMC is not set' /proc/config.gz 2>/dev/null; then
+    echo 'erdma-controller: kernel built without SMC; skip SMC-R configuration'
+else
+    # Missing module metadata is not proof that the kernel lacks SMC.
+    # Preserve the modprobe error for broken or incomplete installations.
+    modprobe smc
+fi
+`
+
 // getDriverSetupScript keeps our install and module configuration operations
 // under one lock. External installers do not participate in this protocol.
 func getDriverSetupScript(profile, version string, containerOS bool) string {
@@ -191,7 +207,7 @@ fi
 `
 	}
 	if profile != defaultGPUDriver {
-		script += "stage='SMC configuration'\nmodprobe smc\n"
+		script += smcSetupScript
 	}
 	return script
 }

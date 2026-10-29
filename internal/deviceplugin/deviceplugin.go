@@ -178,6 +178,9 @@ func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginap
 				continue
 			}
 			erdmaInfo = m.devices[devPath[0]]
+			if erdmaInfo == nil || erdmaInfo.Capabilities&types.ERDMA_CAP_SMC_R == 0 {
+				return nil, fmt.Errorf("SMC-R is not supported by eRDMA device %s on this kernel", devPath[0])
+			}
 		}
 		err = drivers.ConfigForNetnsNetDevice(drivers.PNetIDFromDevice(erdmaInfo), "eth0", podConfig.Netns)
 		if err != nil {
