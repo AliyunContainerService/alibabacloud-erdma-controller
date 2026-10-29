@@ -59,6 +59,33 @@ func checkExpose(instanceID string, exposedLocalERIs []string, rdmaDevice string
 	return false, nil
 }
 
+// EnsureRdmaCM loads and probes the host userspace connection-manager device.
+func EnsureRdmaCM() error {
+	// Load explicitly rather than racing rdma-core's asynchronous udev service.
+	if _, err := nodeExec()("modprobe rdma_ucm"); err != nil {
+		return fmt.Errorf("ensure host RDMA-CM device: %w", err)
+	}
+	// Lifsea loads modules from the container, whose /dev is not the host's.
+	devicePath := "/proc/1/root/dev/infiniband/rdma_cm"
+	info, err := os.Stat(devicePath)
+	if err != nil {
+		return fmt.Errorf("check host RDMA-CM device %s: %w", devicePath, err)
+	}
+	if info.Mode()&os.ModeCharDevice == 0 {
+		return fmt.Errorf("host RDMA-CM device %s is not a character device", devicePath)
+	}
+	return nil
+}
+
+// smcRCapability reflects the module actually available in the running kernel,
+// including kernels where SMC is built in.
+func smcRCapability() types.ERdmaCAP {
+	if _, err := os.Stat("/sys/module/smc"); err == nil {
+		return types.ERDMA_CAP_SMC_R
+	}
+	return 0
+}
+
 // installAndConfigureDriver holds the shared lock through installation and
 // module configuration, including the reuse path.
 func installAndConfigureDriver(profile, version string) error {

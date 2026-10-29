@@ -57,9 +57,8 @@ func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices, dev
 
 	pluginEndpoint := fmt.Sprintf(dpSocketPath, time.Now().Unix())
 	if allocRdmaCM {
-		_, err := os.Stat(path.Join("/proc/1/root", rdmaCMDevice))
-		if err != nil {
-			allocRdmaCM = false
+		if _, err := os.Stat(path.Join("/proc/1/root", rdmaCMDevice)); err != nil {
+			return nil, fmt.Errorf("check host RDMA-CM device: %w", err)
 		}
 	}
 	return &ERDMADevicePlugin{
@@ -141,6 +140,10 @@ func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginap
 		return &pluginapi.PreStartContainerResponse{}, fmt.Errorf("can not get pod config %s, err, %v", pod, err)
 	}
 	if podConfig.SMCR {
+		erdmaInfo, err := m.smcrDevice(req.DevicesIDs)
+		if err != nil {
+			return nil, err
+		}
 		configSysctl := func(sysctl string) error {
 			output, err := exec.Command("nsenter", []string{
 				"-n/proc/1/root/" + podConfig.Netns,
@@ -170,15 +173,6 @@ func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginap
 		if err != nil {
 			return &pluginapi.PreStartContainerResponse{}, err
 		}
-		var erdmaInfo *types.ERdmaDeviceInfo
-
-		for _, devID := range req.DevicesIDs {
-			devPath := strings.Split(devID, "/")
-			if len(devPath) <= 1 {
-				continue
-			}
-			erdmaInfo = m.devices[devPath[0]]
-		}
 		err = drivers.ConfigForNetnsNetDevice(drivers.PNetIDFromDevice(erdmaInfo), "eth0", podConfig.Netns)
 		if err != nil {
 			return &pluginapi.PreStartContainerResponse{}, err
@@ -186,6 +180,24 @@ func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginap
 	}
 
 	return &pluginapi.PreStartContainerResponse{}, nil
+}
+
+func (m *ERDMADevicePlugin) smcrDevice(deviceIDs []string) (*types.ERdmaDeviceInfo, error) {
+	var device *types.ERdmaDeviceInfo
+	for _, id := range deviceIDs {
+		name, _, ok := strings.Cut(id, "/")
+		device = m.devices[name]
+		if !ok || device == nil {
+			return nil, fmt.Errorf("unknown eRDMA device %q for SMC-R", id)
+		}
+		if device.Capabilities&types.ERDMA_CAP_SMC_R == 0 {
+			return nil, fmt.Errorf("SMC-R is not supported by eRDMA device %s on this kernel", name)
+		}
+	}
+	if device == nil {
+		return nil, fmt.Errorf("no eRDMA device allocated for SMC-R")
+	}
+	return device, nil
 }
 
 // Stop stops the gRPC server
