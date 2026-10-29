@@ -58,9 +58,8 @@ func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices, dev
 
 	pluginEndpoint := fmt.Sprintf(dpSocketPath, time.Now().Unix())
 	if allocRdmaCM {
-		_, err := os.Stat(path.Join("/proc/1/root", rdmaCMDevice))
-		if err != nil {
-			allocRdmaCM = false
+		if _, err := os.Stat(path.Join("/proc/1/root", rdmaCMDevice)); err != nil {
+			return nil, fmt.Errorf("check host RDMA-CM device: %w", err)
 		}
 	}
 	return &ERDMADevicePlugin{

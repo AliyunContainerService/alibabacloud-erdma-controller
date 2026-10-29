@@ -3,10 +3,15 @@
 package drivers
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 )
+
+func EnsureRdmaCM() error {
+	return fmt.Errorf("RDMA-CM is not supported on this platform")
+}
 
 func ConfigSMCPnetForDevice(info *types.ERdmaDeviceInfo) error {
 	driverLog.Error(nil, "erdma driver is not supported on this platform")

@@ -161,6 +161,11 @@ func (a *Agent) Run() error {
 	if err != nil {
 		return fmt.Errorf("ensure eri driver failed: %w", err)
 	}
+	if allocRdmaCMForDriver(a.driver.Name()) {
+		if err := drivers.EnsureRdmaCM(); err != nil {
+			return err
+		}
+	}
 	erdmaDevices := make([]*types.ERdmaDeviceInfo, 0)
 	for _, eriInfo := range eriInfos.Spec.Devices {
 		deviceInfo, err := probeDeviceWithRetry(context.Background(), a.driver, &types.ERI{
