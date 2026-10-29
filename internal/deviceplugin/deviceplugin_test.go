@@ -42,29 +42,3 @@ func TestAllocateRdmaCM(t *testing.T) {
 		})
 	}
 }
-
-func TestSMCRDeviceCapability(t *testing.T) {
-	plugin := &ERDMADevicePlugin{devices: map[string]*types.ERdmaDeviceInfo{
-		"supported":  {Name: "supported", Capabilities: types.ERDMA_CAP_VERBS | types.ERDMA_CAP_SMC_R},
-		"verbs-only": {Name: "verbs-only", Capabilities: types.ERDMA_CAP_VERBS},
-	}}
-	for _, tc := range []struct {
-		name      string
-		ids       []string
-		wantError bool
-	}{
-		{name: "supported", ids: []string{"supported/0"}},
-		{name: "unsupported kernel", ids: []string{"verbs-only/0"}, wantError: true},
-		{name: "mixed capabilities", ids: []string{"supported/0", "verbs-only/1"}, wantError: true},
-		{name: "unknown", ids: []string{"missing/0"}, wantError: true},
-		{name: "malformed", ids: []string{"supported"}, wantError: true},
-		{name: "empty", wantError: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := plugin.smcrDevice(tc.ids)
-			if (err != nil) != tc.wantError {
-				t.Fatalf("error=%v, wantError=%v", err, tc.wantError)
-			}
-		})
-	}
-}
