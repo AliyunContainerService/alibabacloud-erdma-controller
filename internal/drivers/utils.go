@@ -130,6 +130,16 @@ fi
 // getDriverSetupScript keeps our install and module configuration operations
 // under one lock. External installers do not participate in this protocol.
 func getDriverSetupScript(profile, version string, containerOS bool) string {
+	if containerOS {
+		// Lifsea owns its kernel drivers and exposes /lib/modules read-only.
+		// Do not install packages, create locks, or change loaded module modes.
+		return `if ! modinfo erdma >/dev/null 2>&1; then
+    echo 'Lifsea OS-managed eRDMA driver is unavailable; check the node OS image' >&2
+    exit 1
+fi
+echo 'erdma-controller: verified OS-managed eRDMA driver on Lifsea; skip installation and module configuration'
+`
+	}
 	mode := "N"
 	if profile != defaultDriver {
 		mode = "Y"
@@ -138,18 +148,6 @@ func getDriverSetupScript(profile, version string, containerOS bool) string {
 	install := getInstallScript(mode == "Y", version)
 	detach := detachInstallerScript
 	lock := "/run/lock/erdma-controller-install.lock"
-	if containerOS {
-		// Lifsea runs with the host userspace but its OS forbids nsenter, so the
-		// installer cannot be migrated into a host cgroup; skip that step. Lifsea
-		// also cannot run the official installer, so reuse detection is just the
-		// module presence and installation only pulls the matching kernel-modules
-		// package (no eadm/DKMS). If the module is already present, it is reused.
-		detach = ""
-		check = "modinfo erdma >/dev/null 2>&1"
-		install = "set -e\nyum install -y kernel-modules-$(uname -r)\nmodinfo erdma >/dev/null"
-		// /lib/modules is shared with the host, unlike the agent's /run.
-		lock = "/lib/modules/.erdma-controller-install.lock"
-	}
 	script := fmt.Sprintf(`set -e
 stage='setup lock'
 trap 'rc=$?; if [ "$rc" -ne 0 ] && [ "$BASH_SUBSHELL" = 0 ]; then if [ -n "${install_log:-}" ]; then cat "$install_log" >&2 || :; fi; echo "erdma-controller: $stage failed (exit $rc)" >&2; fi; exit "$rc"' EXIT
