@@ -78,6 +78,12 @@ This support targets regular eRDMA devices, not Lingjun mlx5 VPC RDMA or the
 tail RDMA network. No RDMA namespace-isolation policy or tail-network driver is
 modified. `localERIDiscovery` remains a separate, cluster-wide option.
 
+Cross-node verbs communication has been verified with `hostNetwork: true`.
+On the tested preinstalled driver, ordinary Pod network namespaces expose zero
+GIDs and perftest fails when moving the QP to RTR. Device injection alone does
+not make that networking mode usable; it requires separate driver/network
+integration validation.
+
 Device discovery and allocation accept only `erdma_*` devices. Pods receive
 individual matching `uverbsN` devices and, when required, `rdma_cm`; neither
 `/dev` nor `/dev/infiniband` is mounted as a directory. `allocateAllDevices`
