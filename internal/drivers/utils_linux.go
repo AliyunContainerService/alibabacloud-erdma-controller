@@ -151,6 +151,9 @@ func nodeExec() func(string) (string, error) {
 }
 
 func GetERdmaDevPathsFromRdmaLink(rdmaLink *netlink.RdmaLink) ([]string, error) {
+	if !strings.HasPrefix(rdmaLink.Attrs.Name, "erdma_") {
+		return nil, fmt.Errorf("refusing non-eRDMA device %q", rdmaLink.Attrs.Name)
+	}
 	var devPaths []string
 	ibUverbsDevs, err := os.ReadDir("/sys/class/infiniband_verbs/")
 	if err != nil {
@@ -183,12 +186,21 @@ func GetERdmaFromLink(link netlink.Link) (*netlink.RdmaLink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error list rdma links, %v", err)
 	}
+	return findERdmaLink(link, rdmaLinks)
+}
+
+func findERdmaLink(link netlink.Link, rdmaLinks []*netlink.RdmaLink) (*netlink.RdmaLink, error) {
 	linkHwAddr := link.Attrs().HardwareAddr
 	// erdma guid first byte is ^= 0x2
 	new_linkHwAddr := make(net.HardwareAddr, len(linkHwAddr))
 	copy(new_linkHwAddr, linkHwAddr)
 	new_linkHwAddr[0] ^= 0x2
 	for _, rl := range rdmaLinks {
+		// A shared host can have mlx5/troce tail-network devices as well.
+		// Never match or expose them through the eRDMA device plugin.
+		if !strings.HasPrefix(rl.Attrs.Name, "erdma_") {
+			continue
+		}
 		rdmaHwAddr, err := parseERdmaLinkHwAddr(rl.Attrs.NodeGuid)
 		if err != nil {
 			return nil, err

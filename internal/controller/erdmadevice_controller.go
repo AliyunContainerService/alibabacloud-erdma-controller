@@ -20,6 +20,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
+
 	"github.com/samber/lo"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -79,7 +81,12 @@ func (r *ERdmaDeviceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	eriStatus, err := r.EriClient.EnsureEriForInstance(ctx, device.Spec.Devices)
+	var eriStatus []networkv1.DeviceStatus
+	if device.Labels[consts.LingjunWorkerLabel] == "true" {
+		eriStatus, err = r.EriClient.ObserveEriForInstance(ctx, device.Spec.Devices)
+	} else {
+		eriStatus, err = r.EriClient.EnsureEriForInstance(ctx, device.Spec.Devices)
+	}
 	if err != nil {
 		return requeueOnECSThrottling(err, erdmaLogger)
 	}

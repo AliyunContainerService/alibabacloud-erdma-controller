@@ -7,6 +7,7 @@ import (
 	"time"
 
 	aliyunclient "github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/aliyun/client"
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
@@ -112,32 +113,50 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// Existing ERdmaDevice CR path: backfill terway-compat tags once per
 		// controller lifetime so old nodes provisioned before this feature also
 		// stop conflicting with terway.
-		instanceID := existingDevice.Labels["alibabacloud.com/instance-id"]
-		r.backfillEriTags(ctx, []networkv1.ERdmaDevice{*existingDevice}, instanceID, erdmaLogger)
+		if !isLingjunNode(&node) {
+			instanceID := existingDevice.Labels["alibabacloud.com/instance-id"]
+			r.backfillEriTags(ctx, []networkv1.ERdmaDevice{*existingDevice}, instanceID, erdmaLogger)
+		}
 		return ctrl.Result{}, nil
 	}
 
-	instanceInfo, err := r.EriClient.InstanceFromNode(ctx, &node)
-	if err != nil {
-		return requeueOnECSThrottling(err, erdmaLogger)
-	}
-	instanceID := *instanceInfo.InstanceId
-	eri, err := r.EriClient.SelectERIs(ctx, instanceInfo)
-	if err != nil {
-		return requeueOnECSThrottling(err, erdmaLogger)
-	}
-	if eri == nil {
-		erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
-		return ctrl.Result{}, nil
-	}
-	jumboFrame, err := r.EriClient.IsJumboFrameEnabled(ctx, instanceID)
-	if err != nil {
-		var throttlingErr *aliyunclient.ThrottlingError
-		if stderrors.As(err, &throttlingErr) {
+	var (
+		instanceID string
+		eri        []*types.ERI
+		jumboFrame bool
+	)
+	lingjun := isLingjunNode(&node)
+	if lingjun {
+		instanceID = node.Name
+		eri, err = r.EriClient.SelectLingjunERIs(ctx, &node)
+		if err != nil {
 			return requeueOnECSThrottling(err, erdmaLogger)
 		}
-		erdmaLogger.Error(err, "failed to check jumbo frame status, defaulting to false")
-		jumboFrame = false
+	} else {
+		instanceInfo, err := r.EriClient.InstanceFromNode(ctx, &node)
+		if err != nil {
+			return requeueOnECSThrottling(err, erdmaLogger)
+		}
+		instanceID = *instanceInfo.InstanceId
+		eri, err = r.EriClient.SelectERIs(ctx, instanceInfo)
+		if err != nil {
+			return requeueOnECSThrottling(err, erdmaLogger)
+		}
+		if len(eri) > 0 {
+			jumboFrame, err = r.EriClient.IsJumboFrameEnabled(ctx, instanceID)
+			if err != nil {
+				var throttlingErr *aliyunclient.ThrottlingError
+				if stderrors.As(err, &throttlingErr) {
+					return requeueOnECSThrottling(err, erdmaLogger)
+				}
+				erdmaLogger.Error(err, "failed to check jumbo frame status, defaulting to false")
+				jumboFrame = false
+			}
+		}
+	}
+	if len(eri) == 0 {
+		erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
+		return ctrl.Result{}, nil
 	}
 	erdmaDevice := networkv1.ERdmaDevice{
 		ObjectMeta: metav1.ObjectMeta{
@@ -169,6 +188,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}),
 		},
 	}
+	if lingjun {
+		erdmaDevice.Labels[consts.LingjunWorkerLabel] = "true"
+	}
 	err = r.Client.Create(ctx, &erdmaDevice)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -180,6 +202,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *NodeReconciler) backfillEriTags(ctx context.Context, devices []networkv1.ERdmaDevice, instanceID string, logger logr.Logger) {
 	var pending []string
 	for _, dev := range devices {
+		if dev.Labels[consts.LingjunWorkerLabel] == "true" {
+			continue
+		}
 		for _, device := range dev.Spec.Devices {
 			if device.ID == "" {
 				continue

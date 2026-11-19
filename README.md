@@ -57,6 +57,32 @@ credentials:
   accessKeyID: "{access key}"
   accessKeySecret: "{access key secret}"
 ```
+#### Lingjun nodes with eRDMA
+
+Lingjun nodes exposing regular `erdma_*` devices are discovered separately from
+ECS instances. Nodes are identified by `alibabacloud.com/lingjun-worker=true`, or
+by an `e01-*` providerID equal to the node name when that label is absent. The
+controller queries existing ENIs using the node name as the instance ID and
+selects only attached `HighPerformance` ENIs. It does not create, attach, convert,
+or tag Lingjun ENIs, and does not query ECS instance capacity or jumbo-frame
+settings for these nodes. Nodes without eligible ENIs do not receive an
+ERdmaDevice resource.
+
+The node image must already provide the eRDMA driver and its compatible RDMA
+stack. The agent skips driver installation and mode changes on Lingjun, retains
+the existing ENI MAC/GUID-based eRDMA discovery, and does not expose tail-network
+RDMA devices. Existing agent affinity and tolerations must allow the target
+nodes. ECS nodes keep their existing provisioning and driver setup paths.
+
+This support targets regular eRDMA devices, not Lingjun mlx5 VPC RDMA or the
+tail RDMA network. No RDMA namespace-isolation policy or tail-network driver is
+modified. `localERIDiscovery` remains a separate, cluster-wide option.
+
+Device discovery and allocation accept only `erdma_*` devices. Pods receive
+individual matching `uverbsN` devices and, when required, `rdma_cm`; neither
+`/dev` nor `/dev/infiniband` is mounted as a directory. `allocateAllDevices`
+exposes all discovered eRDMA devices, not all RDMA devices on the host.
+
 #### localERIDiscovery mode
 To expose existing erdma devices on the node to pods, enable `localERIDiscovery` configuration in values.yaml. This eliminates the need to create and authorize ram roles and policies according to the above steps for accessing the erdma API.
 ##### expose specified erdma devices on each node
