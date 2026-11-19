@@ -30,18 +30,19 @@ func TestDriverSetupScriptProfileLogic(t *testing.T) {
 	}
 }
 
-// Lifsea cannot run the official installer (its OS forbids nsenter and installing
-// the full stack) and cannot migrate the installer into a host cgroup. It only
-// pulls the matching kernel-modules package, reusing an already-present module.
-func TestLifseaSetupSkipsInstallerAndCgroupMigration(t *testing.T) {
-	script := getDriverSetupScript(defaultDriver, "latest", true)
-	if strings.Contains(script, "wget ") {
-		t.Error("lifsea must not download the official installer")
-	}
-	if !strings.Contains(script, "yum install -y kernel-modules-$(uname -r)") {
-		t.Error("lifsea must install the kernel-modules package")
-	}
-	if strings.Contains(script, "cgroup.procs") || strings.Contains(script, "/sys/fs/cgroup/") {
-		t.Error("lifsea must not perform host-cgroup migration")
+// Lifsea must not write to its immutable OS or change OS-managed modules.
+func TestLifseaSetupChecksWithoutInstalling(t *testing.T) {
+	for _, profile := range []string{defaultDriver, compatDriver, defaultGPUDriver} {
+		t.Run(profile, func(t *testing.T) {
+			script := getDriverSetupScript(profile, "latest", true)
+			if !strings.Contains(script, "modinfo erdma") {
+				t.Fatal("Lifsea must check the OS-managed driver")
+			}
+			for _, forbidden := range []string{"wget", "yum", "flock", "modprobe", "rmmod", "/lib/modules/", "/sys/fs/cgroup/"} {
+				if strings.Contains(script, forbidden) {
+					t.Errorf("Lifsea setup must not contain %q", forbidden)
+				}
+			}
+		})
 	}
 }
