@@ -105,6 +105,23 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 	eri := &EriClient{client: api, regionID: "cn-wulanchabu"}
 	nodes := &NodeReconciler{Client: kube, EriClient: eri, CtrlConfig: &types.Config{}}
 	req := ctrl.Request{NamespacedName: client.ObjectKey{Name: node.Name}}
+	// A node may be observed before its cloud identity is populated.
+	pending := node.DeepCopy()
+	pending.Spec.ProviderID = ""
+	pending.Labels = map[string]string{consts.LingjunWorkerLabel: consts.LingjunWorkerLabelValue}
+	if err := kube.Update(ctx, pending); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := nodes.Reconcile(ctx, req); err == nil {
+		t.Fatal("missing providerID must return a retryable error")
+	}
+	node.ResourceVersion = pending.ResourceVersion
+	if err := kube.Update(ctx, node); err != nil {
+		t.Fatal(err)
+	}
+	if !nodes.PredictNodeUpdate(pending, node) {
+		t.Fatal("populating providerID must enqueue the node again")
+	}
 	for range 3 {
 		if _, err := nodes.Reconcile(ctx, req); err != nil {
 			t.Fatal(err)
