@@ -15,13 +15,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/utils"
 	"github.com/samber/lo"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 )
 
 func checkExpose(instanceID string, exposedLocalERIs []string, rdmaDevice string) (bool, error) {
@@ -234,8 +234,8 @@ func rdmaMatchesNetdev(devicePath, netdev string) (matched, known bool, err erro
 	}
 	for _, name := range paths {
 		data, err := os.ReadFile(name)
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENODATA) ||
-			errors.Is(err, unix.EINVAL) || errors.Is(err, unix.ENODEV) {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENODATA) ||
+			errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENODEV) {
 			continue // Unused GID table slots have no associated netdev.
 		}
 		if err != nil {
