@@ -59,40 +59,11 @@ credentials:
 ```
 #### Lingjun nodes with eRDMA
 
-Lingjun nodes with preconfigured RDMA ENIs are discovered separately from
-ECS instances. Nodes are identified by `alibabacloud.com/lingjun-worker=true`, or
-by an `e01-*` providerID equal to the node name when that label is absent. The
-controller queries existing ENIs using the node name as the instance ID and
-selects only attached `HighPerformance` ENIs without querying ECS instance
-capacity or jumbo-frame settings. Nodes without eligible ENIs do not receive an
-ERdmaDevice resource. Once created, the resource uses the same ENI reconciliation
-as ECS: configured ENIs become Ready; abnormal ENIs use the existing attach and
-configuration handling.
-
-Selected ENIs receive the existing Terway exclusion and instance-id tags,
-including backfill for existing ERdmaDevice resources. No creator tag is added
-to platform-provisioned ENIs.
-
-The agent uses the existing driver setup flow on Lingjun as on ECS: reuse an
-installed driver or install it when missing, then apply the selected profile's
-module configuration. ENI MAC/GUID-based discovery excludes tail-network RDMA
-devices. Existing agent affinity and tolerations must allow the target nodes.
-
-RDMA devices are selected through their association with the ENI's netdev,
-independently of RDMA device names (including `mlx5_*`). Tail-network devices
-associated with other netdevs are excluded. No RDMA namespace-isolation policy or tail-network driver is
-modified. `localERIDiscovery` remains a separate, cluster-wide option.
-
-Cross-node verbs communication has been verified with `hostNetwork: true`.
-On the tested preinstalled driver, ordinary Pod network namespaces expose zero
-GIDs and perftest fails when moving the QP to RTR. Device injection alone does
-not make that networking mode usable; it requires separate driver/network
-integration validation.
-
-Device discovery selects only ENI-associated RDMA devices. Pods receive
-individual matching `uverbsN` devices and, when required, `rdma_cm`; neither
-`/dev` nor `/dev/infiniband` is mounted as a directory. `allocateAllDevices`
-exposes all discovered eRDMA devices, not all RDMA devices on the host.
+Lingjun nodes are supported when their eRDMA ENIs are already attached and
+HighPerformance is enabled. Ensure the agent's scheduling configuration allows
+these nodes. Only RDMA devices associated with the selected ENIs are exposed;
+tail-network RDMA devices are excluded. Use `hostNetwork: true` for the verified
+cross-node verbs configuration.
 
 #### localERIDiscovery mode
 To expose existing erdma devices on the node to pods, enable `localERIDiscovery` configuration in values.yaml. This eliminates the need to create and authorize ram roles and policies according to the above steps for accessing the erdma API.
