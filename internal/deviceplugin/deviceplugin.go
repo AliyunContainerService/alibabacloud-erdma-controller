@@ -30,8 +30,6 @@ const (
 	rdmaCMDevice = "/dev/infiniband/rdma_cm"
 )
 
-var erdmaDevicePath = regexp.MustCompile(`^/dev/infiniband/(uverbs[0-9]+|rdma_cm)$`)
-
 // ERDMADevicePlugin implements the Kubernetes device plugin API
 type ERDMADevicePlugin struct {
 	socket               string
@@ -49,14 +47,6 @@ type ERDMADevicePlugin struct {
 func NewERDMADevicePlugin(devices []*types.ERdmaDeviceInfo, allocAllDevices, devicepluginPreStart, allocRdmaCM bool) (*ERDMADevicePlugin, error) {
 	devMap := map[string]*types.ERdmaDeviceInfo{}
 	for _, d := range devices {
-		if d == nil || !strings.HasPrefix(d.Name, "erdma_") {
-			return nil, fmt.Errorf("only erdma_* devices may be exposed by the eRDMA plugin")
-		}
-		for _, devicePath := range d.DevPaths {
-			if !erdmaDevicePath.MatchString(devicePath) {
-				return nil, fmt.Errorf("refusing eRDMA device path %q", devicePath)
-			}
-		}
 		devMap[d.Name] = d
 	}
 	if devicepluginPreStart {

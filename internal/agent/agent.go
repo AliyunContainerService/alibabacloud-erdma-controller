@@ -122,7 +122,7 @@ func allocRdmaCMForDriver(driverName string) bool {
 }
 
 func (a *Agent) installDriver(device *networkv1.ERdmaDevice) error {
-	if device.Labels[consts.LingjunWorkerLabel] == "true" {
+	if device.Labels[consts.LingjunWorkerLabel] == consts.LingjunWorkerLabelValue {
 		// Lingjun shares the RDMA core with tail-network devices. Reuse the
 		// platform's driver stack rather than replacing it with an ECS installer.
 		agentLog.Info("using platform-provisioned eRDMA driver on Lingjun; skip installation and module configuration")

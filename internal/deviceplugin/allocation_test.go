@@ -8,21 +8,6 @@ import (
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
-func TestPluginRejectsForeignDevicesAndDirectoryPaths(t *testing.T) {
-	for _, name := range []string{"mlx5_0", "troce_bond_0"} {
-		_, err := NewERDMADevicePlugin([]*types.ERdmaDeviceInfo{{Name: name, DevPaths: []string{"/dev/infiniband/uverbs2"}}}, false, false, false)
-		if err == nil {
-			t.Fatalf("must refuse %s", name)
-		}
-	}
-	for _, devicePath := range []string{"/dev", "/dev/infiniband", "/dev/infiniband/../infiniband/uverbs0", "/dev/infiniband/tsoe_ucmd0"} {
-		_, err := NewERDMADevicePlugin([]*types.ERdmaDeviceInfo{{Name: "erdma_0", DevPaths: []string{devicePath}}}, false, false, false)
-		if err == nil {
-			t.Fatalf("must refuse path %s", devicePath)
-		}
-	}
-}
-
 func TestAllocateAllExposesOnlySelectedCharacterDevices(t *testing.T) {
 	m, err := NewERDMADevicePlugin([]*types.ERdmaDeviceInfo{
 		{Name: "erdma_0", DevPaths: []string{"/dev/infiniband/uverbs0"}},

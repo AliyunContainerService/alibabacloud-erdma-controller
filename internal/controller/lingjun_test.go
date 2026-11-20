@@ -60,7 +60,7 @@ func TestLingjunNodeIdentity(t *testing.T) {
 		{provider: "cn-wulanchabu.i-test", want: false},
 		{provider: "another-provider", want: false},
 		{provider: "e01-other-node", want: false},
-		{provider: "node-id", labels: map[string]string{consts.LingjunWorkerLabel: "true"}, want: true},
+		{provider: "node-id", labels: map[string]string{consts.LingjunWorkerLabel: consts.LingjunWorkerLabelValue}, want: true},
 		{provider: "e01-test", labels: map[string]string{consts.LingjunWorkerLabel: "false"}, want: false},
 	} {
 		node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "e01-test", Labels: tc.labels}, Spec: corev1.NodeSpec{ProviderID: tc.provider}}
@@ -108,7 +108,7 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(device.Spec.Devices) != 2 || device.Spec.Devices[0].ID != "eni-primary" || device.Spec.Devices[0].InstanceID != node.Name ||
-		device.Labels[consts.LingjunWorkerLabel] != "true" || device.Spec.JumboFrame {
+		device.Labels[consts.LingjunWorkerLabel] != consts.LingjunWorkerLabelValue || device.Spec.JumboFrame {
 		t.Fatalf("unexpected device: %+v", device)
 	}
 	if !device.Spec.Devices[0].IsPrimaryENI || device.Spec.Devices[0].QueuePair != 120 ||
@@ -128,7 +128,7 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 		t.Fatalf("unexpected status: %+v", device.Status)
 	}
 	if api.describeInstancesCalls != 0 || api.describeInstanceTypesCalls != 0 || api.tagResourcesCalls != 0 {
-		t.Fatalf("Lingjun invoked ECS instance/capacity/tag APIs: %+v", api.fakeEriAPI)
+		t.Fatalf("Lingjun invoked ECS instance/capacity/tag APIs: %+v", &api.fakeEriAPI)
 	}
 	if len(api.requests) != 2 || ptr.Deref(api.requests[0].InstanceId, "") != node.Name {
 		t.Fatalf("unexpected ENI queries: %+v", api.requests)

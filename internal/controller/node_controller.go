@@ -189,7 +189,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		},
 	}
 	if lingjun {
-		erdmaDevice.Labels[consts.LingjunWorkerLabel] = "true"
+		erdmaDevice.Labels[consts.LingjunWorkerLabel] = consts.LingjunWorkerLabelValue
 	}
 	err = r.Client.Create(ctx, &erdmaDevice)
 	if err != nil {
@@ -202,7 +202,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *NodeReconciler) backfillEriTags(ctx context.Context, devices []networkv1.ERdmaDevice, instanceID string, logger logr.Logger) {
 	var pending []string
 	for _, dev := range devices {
-		if dev.Labels[consts.LingjunWorkerLabel] == "true" {
+		if dev.Labels[consts.LingjunWorkerLabel] == consts.LingjunWorkerLabelValue {
 			continue
 		}
 		for _, device := range dev.Spec.Devices {

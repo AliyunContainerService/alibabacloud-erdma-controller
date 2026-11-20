@@ -16,7 +16,7 @@ import (
 
 func isLingjunNode(node *corev1.Node) bool {
 	if value, ok := node.Labels[consts.LingjunWorkerLabel]; ok {
-		return value == "true"
+		return value == consts.LingjunWorkerLabelValue
 	}
 	// Lingjun nodes may only expose their e01-* node ID as providerID.
 	// Do not treat arbitrary non-ECS provider IDs as Lingjun.

@@ -84,7 +84,7 @@ GIDs and perftest fails when moving the QP to RTR. Device injection alone does
 not make that networking mode usable; it requires separate driver/network
 integration validation.
 
-Device discovery and allocation accept only `erdma_*` devices. Pods receive
+Device discovery selects only `erdma_*` devices. Pods receive
 individual matching `uverbsN` devices and, when required, `rdma_cm`; neither
 `/dev` nor `/dev/infiniband` is mounted as a directory. `allocateAllDevices`
 exposes all discovered eRDMA devices, not all RDMA devices on the host.
