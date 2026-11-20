@@ -4,7 +4,6 @@ package drivers
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io/fs"
 	"net"
@@ -15,7 +14,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
@@ -185,67 +183,22 @@ func GetERdmaFromLink(link netlink.Link) (*netlink.RdmaLink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error list rdma links, %v", err)
 	}
-	return findERdmaLink(link, rdmaLinks, "/sys/class/infiniband")
-}
-
-func findERdmaLink(link netlink.Link, rdmaLinks []*netlink.RdmaLink, sysfsRoot string) (*netlink.RdmaLink, error) {
-	var selected *netlink.RdmaLink
+	linkHwAddr := link.Attrs().HardwareAddr
+	// erdma guid first byte is ^= 0x2
+	new_linkHwAddr := make(net.HardwareAddr, len(linkHwAddr))
+	copy(new_linkHwAddr, linkHwAddr)
+	new_linkHwAddr[0] ^= 0x2
 	for _, rl := range rdmaLinks {
-		devicePath := filepath.Join(sysfsRoot, rl.Attrs.Name)
-		matched, known, err := rdmaMatchesNetdev(devicePath, link.Attrs().Name)
+		rdmaHwAddr, err := parseERdmaLinkHwAddr(rl.Attrs.NodeGuid)
 		if err != nil {
 			return nil, err
 		}
-		if !known {
-			// Older eRDMA drivers may not publish GID netdev associations.
-			// Their GUID convention is not valid for arbitrary RDMA hardware.
-			module, err := os.Readlink(filepath.Join(devicePath, "device/driver/module"))
-			if err != nil || filepath.Base(module) != "erdma" {
-				continue
-			}
-			mac := append(net.HardwareAddr(nil), link.Attrs().HardwareAddr...)
-			if len(mac) != 6 {
-				continue
-			}
-			mac[0] ^= 0x2
-			rdmaMAC, err := parseERdmaLinkHwAddr(rl.Attrs.NodeGuid)
-			if err != nil {
-				return nil, err
-			}
-			matched = bytes.Equal(rdmaMAC, mac)
+		driverLog.Info("check rdma link", "rdmaLink", rl.Attrs.Name, "rdmaHwAddr", rdmaHwAddr.String(), "linkHwAddr", linkHwAddr.String())
+		if rdmaHwAddr.String() == new_linkHwAddr.String() {
+			return rl, nil
 		}
-		if matched {
-			if selected != nil {
-				return nil, fmt.Errorf("multiple RDMA devices associated with netdev %s", link.Attrs().Name)
-			}
-			selected = rl
-		}
-	}
-	if selected != nil {
-		return selected, nil
 	}
 	return nil, fmt.Errorf("%w for %s", ErrERdmaLinkNotFound, link.Attrs().Name)
-}
-
-func rdmaMatchesNetdev(devicePath, netdev string) (matched, known bool, err error) {
-	paths, err := filepath.Glob(filepath.Join(devicePath, "ports/*/gid_attrs/ndevs/*"))
-	if err != nil {
-		return false, false, err
-	}
-	for _, name := range paths {
-		data, err := os.ReadFile(name)
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENODATA) ||
-			errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENODEV) {
-			continue // Unused GID table slots have no associated netdev.
-		}
-		if err != nil {
-			return false, false, fmt.Errorf("read RDMA netdev association %s: %w", name, err)
-		}
-		value := strings.TrimSpace(string(data))
-		known = known || value != ""
-		matched = matched || value == netdev
-	}
-	return matched, known, nil
 }
 
 func parseERdmaLinkHwAddr(guid string) (net.HardwareAddr, error) {
