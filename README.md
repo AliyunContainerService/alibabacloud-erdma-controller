@@ -77,8 +77,9 @@ installed driver or install it when missing, then apply the selected profile's
 module configuration. ENI MAC/GUID-based discovery excludes tail-network RDMA
 devices. Existing agent affinity and tolerations must allow the target nodes.
 
-This support targets regular eRDMA devices, not Lingjun mlx5 VPC RDMA or the
-tail RDMA network. No RDMA namespace-isolation policy or tail-network driver is
+RDMA devices are selected through their association with the ENI's netdev,
+independently of RDMA device names (including `mlx5_*`). Tail-network devices
+associated with other netdevs are excluded. No RDMA namespace-isolation policy or tail-network driver is
 modified. `localERIDiscovery` remains a separate, cluster-wide option.
 
 Cross-node verbs communication has been verified with `hostNetwork: true`.
@@ -87,7 +88,7 @@ GIDs and perftest fails when moving the QP to RTR. Device injection alone does
 not make that networking mode usable; it requires separate driver/network
 integration validation.
 
-Device discovery selects only `erdma_*` devices. Pods receive
+Device discovery selects only ENI-associated RDMA devices. Pods receive
 individual matching `uverbsN` devices and, when required, `rdma_cm`; neither
 `/dev` nor `/dev/infiniband` is mounted as a directory. `allocateAllDevices`
 exposes all discovered eRDMA devices, not all RDMA devices on the host.
