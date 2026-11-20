@@ -68,11 +68,10 @@ or tag Lingjun ENIs, and does not query ECS instance capacity or jumbo-frame
 settings for these nodes. Nodes without eligible ENIs do not receive an
 ERdmaDevice resource.
 
-The node image must already provide the eRDMA driver and its compatible RDMA
-stack. The agent skips driver installation and mode changes on Lingjun, retains
-the existing ENI MAC/GUID-based eRDMA discovery, and does not expose tail-network
-RDMA devices. Existing agent affinity and tolerations must allow the target
-nodes. ECS nodes keep their existing provisioning and driver setup paths.
+The agent uses the existing driver setup flow on Lingjun as on ECS: reuse an
+installed driver or install it when missing, then apply the selected profile's
+module configuration. ENI MAC/GUID-based discovery excludes tail-network RDMA
+devices. Existing agent affinity and tolerations must allow the target nodes.
 
 This support targets regular eRDMA devices, not Lingjun mlx5 VPC RDMA or the
 tail RDMA network. No RDMA namespace-isolation policy or tail-network driver is

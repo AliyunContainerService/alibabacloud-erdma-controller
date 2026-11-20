@@ -6,40 +6,17 @@ import (
 	"fmt"
 	"testing"
 
-	networkv1 "github.com/AliyunContainerService/alibabacloud-erdma-controller/api/v1"
-	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/drivers"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 type retryTestDriver struct {
-	failures     []error
-	calls        int
-	installCalls int
+	failures []error
+	calls    int
 }
 
-func (d *retryTestDriver) Install() error { d.installCalls++; return nil }
-
-func TestLingjunReusesPlatformDriver(t *testing.T) {
-	driver := &retryTestDriver{}
-	a := &Agent{driver: driver}
-	device := &networkv1.ERdmaDevice{}
-	device.Labels = map[string]string{consts.LingjunWorkerLabel: "true"}
-	if err := a.installDriver(device); err != nil {
-		t.Fatal(err)
-	}
-	if driver.installCalls != 0 {
-		t.Fatal("Lingjun must not replace the shared RDMA stack")
-	}
-	device.Labels = nil
-	if err := a.installDriver(device); err != nil {
-		t.Fatal(err)
-	}
-	if driver.installCalls != 1 {
-		t.Fatal("ECS must retain driver setup")
-	}
-}
+func (d *retryTestDriver) Install() error { return nil }
 
 func (d *retryTestDriver) ProbeDevice(*types.ERI) (*types.ERdmaDeviceInfo, error) {
 	d.calls++

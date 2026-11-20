@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/deviceplugin"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/drivers"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/k8s"
@@ -121,16 +120,6 @@ func allocRdmaCMForDriver(driverName string) bool {
 	return driverName == "default" || driverName == "compat"
 }
 
-func (a *Agent) installDriver(device *networkv1.ERdmaDevice) error {
-	if device.Labels[consts.LingjunWorkerLabel] == consts.LingjunWorkerLabelValue {
-		// Lingjun shares the RDMA core with tail-network devices. Reuse the
-		// platform's driver stack rather than replacing it with an ECS installer.
-		agentLog.Info("using platform-provisioned eRDMA driver on Lingjun; skip installation and module configuration")
-		return nil
-	}
-	return a.driver.Install()
-}
-
 func (a *Agent) Run() error {
 	go stackTriger()
 	var err error
@@ -168,7 +157,7 @@ func (a *Agent) Run() error {
 	}
 	agentLog.Info("eri info", "eriInfo", eriInfos, "driver", a.driver.Name())
 	// 2. install eri driver
-	err = a.installDriver(eriInfos)
+	err = a.driver.Install()
 	if err != nil {
 		return fmt.Errorf("ensure eri driver failed: %w", err)
 	}
