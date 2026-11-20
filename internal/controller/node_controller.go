@@ -113,10 +113,8 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// Existing ERdmaDevice CR path: backfill terway-compat tags once per
 		// controller lifetime so old nodes provisioned before this feature also
 		// stop conflicting with terway.
-		if !isLingjunNode(&node) {
-			instanceID := existingDevice.Labels["alibabacloud.com/instance-id"]
-			r.backfillEriTags(ctx, []networkv1.ERdmaDevice{*existingDevice}, instanceID, erdmaLogger)
-		}
+		instanceID := existingDevice.Labels["alibabacloud.com/instance-id"]
+		r.backfillEriTags(ctx, []networkv1.ERdmaDevice{*existingDevice}, instanceID, erdmaLogger)
 		return ctrl.Result{}, nil
 	}
 
@@ -195,6 +193,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	if lingjun {
+		r.backfillEriTags(ctx, []networkv1.ERdmaDevice{erdmaDevice}, instanceID, erdmaLogger)
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -202,9 +203,6 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *NodeReconciler) backfillEriTags(ctx context.Context, devices []networkv1.ERdmaDevice, instanceID string, logger logr.Logger) {
 	var pending []string
 	for _, dev := range devices {
-		if dev.Labels[consts.LingjunWorkerLabel] == consts.LingjunWorkerLabelValue {
-			continue
-		}
 		for _, device := range dev.Spec.Devices {
 			if device.ID == "" {
 				continue

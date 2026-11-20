@@ -63,10 +63,14 @@ Lingjun nodes exposing regular `erdma_*` devices are discovered separately from
 ECS instances. Nodes are identified by `alibabacloud.com/lingjun-worker=true`, or
 by an `e01-*` providerID equal to the node name when that label is absent. The
 controller queries existing ENIs using the node name as the instance ID and
-selects only attached `HighPerformance` ENIs. It does not create, attach, convert,
-or tag Lingjun ENIs, and does not query ECS instance capacity or jumbo-frame
+selects only attached `HighPerformance` ENIs. It does not create, attach or convert
+Lingjun ENIs, and does not query ECS instance capacity or jumbo-frame
 settings for these nodes. Nodes without eligible ENIs do not receive an
 ERdmaDevice resource.
+
+Selected ENIs receive the existing Terway exclusion and instance-id tags,
+including backfill for existing ERdmaDevice resources. No creator tag is added
+to platform-provisioned ENIs.
 
 The agent uses the existing driver setup flow on Lingjun as on ECS: reuse an
 installed driver or install it when missing, then apply the selected profile's

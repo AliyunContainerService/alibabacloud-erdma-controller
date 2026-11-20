@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	networkv1 "github.com/AliyunContainerService/alibabacloud-erdma-controller/api/v1"
@@ -22,9 +23,15 @@ type lingjunENI = ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsN
 
 type lingjunTestAPI struct {
 	fakeEriAPI
-	enis     []*lingjunENI
-	err      error
-	requests []*ecs.DescribeNetworkInterfacesRequest
+	enis       []*lingjunENI
+	err        error
+	requests   []*ecs.DescribeNetworkInterfacesRequest
+	tagRequest *ecs.TagResourcesRequest
+}
+
+func (f *lingjunTestAPI) TagResources(ctx context.Context, req *ecs.TagResourcesRequest) (*ecs.TagResourcesResponse, error) {
+	f.tagRequest = req
+	return f.fakeEriAPI.TagResources(ctx, req)
 }
 
 func (f *lingjunTestAPI) DescribeNetworkInterfaces(_ context.Context, req *ecs.DescribeNetworkInterfacesRequest) (*ecs.DescribeNetworkInterfacesResponse, error) {
@@ -102,6 +109,9 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 		if _, err := nodes.Reconcile(ctx, req); err != nil {
 			t.Fatal(err)
 		}
+		if api.tagResourcesCalls != 1 {
+			t.Fatalf("tag selected ENIs on creation and avoid duplicate backfill: got %d calls", api.tagResourcesCalls)
+		}
 	}
 	device := &networkv1.ERdmaDevice{}
 	if err := kube.Get(ctx, req.NamespacedName, device); err != nil {
@@ -127,11 +137,29 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 		device.Status.Devices[1].Status != networkv1.DeviceStatusReady {
 		t.Fatalf("unexpected status: %+v", device.Status)
 	}
-	if api.describeInstancesCalls != 0 || api.describeInstanceTypesCalls != 0 || api.tagResourcesCalls != 0 {
-		t.Fatalf("Lingjun invoked ECS instance/capacity/tag APIs: %+v", &api.fakeEriAPI)
+	if api.describeInstancesCalls != 0 || api.describeInstanceTypesCalls != 0 {
+		t.Fatalf("Lingjun invoked ECS instance/capacity APIs: %+v", &api.fakeEriAPI)
 	}
+	checkLingjunTagRequest(t, api.tagRequest, device)
 	if len(api.requests) != 2 || ptr.Deref(api.requests[0].InstanceId, "") != node.Name {
 		t.Fatalf("unexpected ENI queries: %+v", api.requests)
+	}
+}
+
+func checkLingjunTagRequest(t *testing.T, req *ecs.TagResourcesRequest, device *networkv1.ERdmaDevice) {
+	t.Helper()
+	if req == nil || len(req.ResourceId) != 2 {
+		t.Fatalf("unexpected ENI tag request: %+v", req)
+	}
+	if *req.ResourceId[0] != device.Spec.Devices[0].ID || *req.ResourceId[1] != device.Spec.Devices[1].ID {
+		t.Fatalf("must only tag selected eRDMA ENIs: %+v", req.ResourceId)
+	}
+	wantTags := []*ecs.TagResourcesRequestTag{
+		{Key: ptr.To(eriTagExcludedKey), Value: ptr.To(eriTagExcludedValue)},
+		{Key: ptr.To(eriTagInstanceIdKey), Value: ptr.To(device.Spec.Devices[0].InstanceID)},
+	}
+	if !reflect.DeepEqual(req.Tag, wantTags) {
+		t.Fatalf("must tag Terway exclusion and instance identity only: %+v", req.Tag)
 	}
 }
 
