@@ -66,7 +66,7 @@ func TestLingjunNodeIdentity(t *testing.T) {
 		{provider: "e01-test", want: true},
 		{provider: "cn-wulanchabu.i-test", want: false},
 		{provider: "another-provider", want: false},
-		{provider: "e01-other-node", want: false},
+		{provider: "e01-other-node", want: true},
 		{provider: "node-id", labels: map[string]string{consts.LingjunWorkerLabel: consts.LingjunWorkerLabelValue}, want: true},
 		{provider: "e01-test", labels: map[string]string{consts.LingjunWorkerLabel: "false"}, want: false},
 	} {
@@ -87,7 +87,7 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 		t.Fatal(err)
 	}
 	node := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: "e01-test", UID: "node-uid"},
+		ObjectMeta: metav1.ObjectMeta{Name: "custom-node-name", UID: "node-uid"},
 		Spec:       corev1.NodeSpec{ProviderID: "e01-test"},
 		Status:     corev1.NodeStatus{Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}}},
 	}
@@ -117,7 +117,7 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 	if err := kube.Get(ctx, req.NamespacedName, device); err != nil {
 		t.Fatal(err)
 	}
-	if len(device.Spec.Devices) != 2 || device.Spec.Devices[0].ID != "eni-primary" || device.Spec.Devices[0].InstanceID != node.Name ||
+	if len(device.Spec.Devices) != 2 || device.Spec.Devices[0].ID != "eni-primary" || device.Spec.Devices[0].InstanceID != node.Spec.ProviderID ||
 		device.Spec.JumboFrame {
 		t.Fatalf("unexpected device: %+v", device)
 	}
@@ -141,7 +141,7 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 		t.Fatalf("Lingjun invoked ECS instance/capacity APIs: %+v", &api.fakeEriAPI)
 	}
 	checkLingjunTagRequest(t, api.tagRequest, device)
-	if len(api.requests) != 2 || ptr.Deref(api.requests[0].InstanceId, "") != node.Name {
+	if len(api.requests) != 2 || ptr.Deref(api.requests[0].InstanceId, "") != node.Spec.ProviderID {
 		t.Fatalf("unexpected ENI queries: %+v", api.requests)
 	}
 }
@@ -164,14 +164,14 @@ func checkLingjunTagRequest(t *testing.T, req *ecs.TagResourcesRequest, device *
 }
 
 func TestSelectLingjunERIsPaginationAndFailures(t *testing.T) {
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "e01-test"}}
+	instanceID := "e01-test"
 	api := &lingjunTestAPI{}
 	for range 100 {
 		api.enis = append(api.enis, attachedLingjunENI("eni-normal", "Normal"))
 	}
 	api.enis = append(api.enis, attachedLingjunENI("eni-z", trafficModeRDMA), attachedLingjunENI("eni-a", trafficModeRDMA))
 	e := &EriClient{client: api}
-	got, err := e.SelectLingjunERIs(context.Background(), node)
+	got, err := e.SelectLingjunERIs(context.Background(), instanceID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,18 +179,22 @@ func TestSelectLingjunERIsPaginationAndFailures(t *testing.T) {
 		t.Fatalf("unexpected selection: %+v", got)
 	}
 	api.enis = nil
-	if got, err = e.SelectLingjunERIs(context.Background(), node); err != nil || len(got) != 0 {
+	if got, err = e.SelectLingjunERIs(context.Background(), instanceID); err != nil || len(got) != 0 {
 		t.Fatalf("unsupported node: %v %v", got, err)
 	}
 	api.err = errors.New("API failure")
-	if _, err = e.SelectLingjunERIs(context.Background(), node); !errors.Is(err, api.err) {
+	if _, err = e.SelectLingjunERIs(context.Background(), instanceID); !errors.Is(err, api.err) {
 		t.Fatalf("lost API error: %v", err)
 	}
 	api.err = nil
 	bad := attachedLingjunENI("eni-bad", trafficModeRDMA)
 	bad.MacAddress = nil
 	api.enis = []*lingjunENI{bad}
-	if _, err = e.SelectLingjunERIs(context.Background(), node); err == nil {
+	if _, err = e.SelectLingjunERIs(context.Background(), instanceID); err == nil {
 		t.Fatal("must reject incomplete ENI identity")
+	}
+	api.requests = nil
+	if _, err = e.SelectLingjunERIs(context.Background(), ""); err == nil || len(api.requests) != 0 {
+		t.Fatal("empty providerID must not issue an unfiltered ENI query")
 	}
 }

@@ -123,8 +123,8 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		jumboFrame bool
 	)
 	if isLingjunNode(&node) {
-		instanceID = node.Name
-		eri, err = r.EriClient.SelectLingjunERIs(ctx, &node)
+		instanceID = node.Spec.ProviderID
+		eri, err = r.EriClient.SelectLingjunERIs(ctx, instanceID)
 		if err != nil {
 			return requeueOnECSThrottling(err, erdmaLogger)
 		}
