@@ -105,20 +105,20 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 	eri := &EriClient{client: api, regionID: "cn-wulanchabu"}
 	nodes := &NodeReconciler{Client: kube, EriClient: eri, CtrlConfig: &types.Config{}}
 	req := ctrl.Request{NamespacedName: client.ObjectKey{Name: node.Name}}
-	for range 2 {
+	for range 3 {
 		if _, err := nodes.Reconcile(ctx, req); err != nil {
 			t.Fatal(err)
 		}
-		if api.tagResourcesCalls != 1 {
-			t.Fatalf("tag selected ENIs on creation and avoid duplicate backfill: got %d calls", api.tagResourcesCalls)
-		}
+	}
+	if api.tagResourcesCalls != 2 {
+		t.Fatalf("expected selection tagging and one existing-CR backfill, got %d calls", api.tagResourcesCalls)
 	}
 	device := &networkv1.ERdmaDevice{}
 	if err := kube.Get(ctx, req.NamespacedName, device); err != nil {
 		t.Fatal(err)
 	}
 	if len(device.Spec.Devices) != 2 || device.Spec.Devices[0].ID != "eni-primary" || device.Spec.Devices[0].InstanceID != node.Name ||
-		device.Labels[consts.LingjunWorkerLabel] != consts.LingjunWorkerLabelValue || device.Spec.JumboFrame {
+		device.Spec.JumboFrame {
 		t.Fatalf("unexpected device: %+v", device)
 	}
 	if !device.Spec.Devices[0].IsPrimaryENI || device.Spec.Devices[0].QueuePair != 120 ||
@@ -160,28 +160,6 @@ func checkLingjunTagRequest(t *testing.T, req *ecs.TagResourcesRequest, device *
 	}
 	if !reflect.DeepEqual(req.Tag, wantTags) {
 		t.Fatalf("must tag Terway exclusion and instance identity only: %+v", req.Tag)
-	}
-}
-
-func TestObserveLingjunNeverAttachesOrConverts(t *testing.T) {
-	for _, tc := range []struct{ status, mode, instance string }{
-		{types.ENIStatusAvailable, trafficModeRDMA, "e01-test"},
-		{types.ENIStatusInUse, "Normal", "e01-test"},
-		{types.ENIStatusInUse, trafficModeRDMA, "e01-other"},
-	} {
-		eni := attachedLingjunENI("eni-test", tc.mode)
-		eni.Status, eni.InstanceId = ptr.To(tc.status), ptr.To(tc.instance)
-		api := &lingjunTestAPI{enis: []*lingjunENI{eni}}
-		client := &EriClient{client: api}
-		for _, primary := range []bool{true, false} {
-			statuses, err := client.ObserveEriForInstance(context.Background(), []networkv1.DeviceInfo{{ID: "eni-test", InstanceID: "e01-test", IsPrimaryENI: primary}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(statuses) != 1 || statuses[0].Status != networkv1.DeviceStatusPending {
-				t.Fatalf("must observe without attaching/converting: %+v", statuses)
-			}
-		}
 	}
 }
 

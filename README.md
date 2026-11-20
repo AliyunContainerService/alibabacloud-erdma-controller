@@ -59,14 +59,15 @@ credentials:
 ```
 #### Lingjun nodes with eRDMA
 
-Lingjun nodes exposing regular `erdma_*` devices are discovered separately from
+Lingjun nodes with preconfigured RDMA ENIs are discovered separately from
 ECS instances. Nodes are identified by `alibabacloud.com/lingjun-worker=true`, or
 by an `e01-*` providerID equal to the node name when that label is absent. The
 controller queries existing ENIs using the node name as the instance ID and
-selects only attached `HighPerformance` ENIs. It does not create, attach or convert
-Lingjun ENIs, and does not query ECS instance capacity or jumbo-frame
-settings for these nodes. Nodes without eligible ENIs do not receive an
-ERdmaDevice resource.
+selects only attached `HighPerformance` ENIs without querying ECS instance
+capacity or jumbo-frame settings. Nodes without eligible ENIs do not receive an
+ERdmaDevice resource. Once created, the resource uses the same ENI reconciliation
+as ECS: configured ENIs become Ready; abnormal ENIs use the existing attach and
+configuration handling.
 
 Selected ENIs receive the existing Terway exclusion and instance-id tags,
 including backfill for existing ERdmaDevice resources. No creator tag is added

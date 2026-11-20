@@ -5,7 +5,7 @@ const (
 
 	SMCRPNETEnv = "SMCR_PNET"
 
-	// LingjunWorkerLabel identifies platform-provisioned Lingjun devices.
+	// LingjunWorkerLabel identifies Lingjun nodes.
 	LingjunWorkerLabel      = "alibabacloud.com/lingjun-worker"
 	LingjunWorkerLabelValue = "true"
 )

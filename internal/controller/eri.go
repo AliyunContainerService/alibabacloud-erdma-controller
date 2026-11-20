@@ -431,15 +431,6 @@ func (e *EriClient) SelectEriFromExist(existENIs []*ecs.DescribeNetworkInterface
 }
 
 func (e *EriClient) EnsureEriForInstance(ctx context.Context, devices []networkv1.DeviceInfo) ([]networkv1.DeviceStatus, error) {
-	return e.ensureEriForInstance(ctx, devices, false)
-}
-
-// ObserveEriForInstance never attaches or converts platform-provisioned ENIs.
-func (e *EriClient) ObserveEriForInstance(ctx context.Context, devices []networkv1.DeviceInfo) ([]networkv1.DeviceStatus, error) {
-	return e.ensureEriForInstance(ctx, devices, true)
-}
-
-func (e *EriClient) ensureEriForInstance(ctx context.Context, devices []networkv1.DeviceInfo, readOnly bool) ([]networkv1.DeviceStatus, error) {
 	eniIDs := lo.Map(devices, func(item networkv1.DeviceInfo, _ int) string {
 		return item.ID
 	})
@@ -465,17 +456,6 @@ func (e *EriClient) ensureEriForInstance(ctx context.Context, devices []networkv
 		}
 		if eniStatus.Status == nil {
 			return nil, fmt.Errorf("cannot found eni %s status", device.ID)
-		}
-		if readOnly {
-			status := networkv1.DeviceStatus{ID: device.ID, Status: networkv1.DeviceStatusPending,
-				Message: "waiting for platform-provisioned eRDMA ENI to be attached and HighPerformance"}
-			if *eniStatus.Status == types.ENIStatusInUse && ptr.Deref(eniStatus.NetworkInterfaceTrafficMode, "") == trafficModeRDMA &&
-				ptr.Deref(eniStatus.InstanceId, "") == device.InstanceID {
-				status.Status = networkv1.DeviceStatusReady
-				status.Message = ""
-			}
-			devStatus = append(devStatus, status)
-			continue
 		}
 		if *eniStatus.Status == types.ENIStatusInUse && *eniStatus.NetworkInterfaceTrafficMode == trafficModeRDMA {
 			devStatus = append(devStatus, networkv1.DeviceStatus{

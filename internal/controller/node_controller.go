@@ -7,7 +7,6 @@ import (
 	"time"
 
 	aliyunclient "github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/aliyun/client"
-	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
@@ -123,8 +122,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		eri        []*types.ERI
 		jumboFrame bool
 	)
-	lingjun := isLingjunNode(&node)
-	if lingjun {
+	if isLingjunNode(&node) {
 		instanceID = node.Name
 		eri, err = r.EriClient.SelectLingjunERIs(ctx, &node)
 		if err != nil {
@@ -186,15 +184,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}),
 		},
 	}
-	if lingjun {
-		erdmaDevice.Labels[consts.LingjunWorkerLabel] = consts.LingjunWorkerLabelValue
-	}
 	err = r.Client.Create(ctx, &erdmaDevice)
 	if err != nil {
 		return ctrl.Result{}, err
-	}
-	if lingjun {
-		r.backfillEriTags(ctx, []networkv1.ERdmaDevice{erdmaDevice}, instanceID, erdmaLogger)
 	}
 
 	return ctrl.Result{}, nil

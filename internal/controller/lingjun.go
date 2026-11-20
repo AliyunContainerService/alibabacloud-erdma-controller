@@ -10,6 +10,7 @@ import (
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	ecs "github.com/alibabacloud-go/ecs-20140526/v4/client"
+	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 )
@@ -67,5 +68,8 @@ func (e *EriClient) SelectLingjunERIs(ctx context.Context, node *corev1.Node) ([
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	if err := e.EnsureEriTags(ctx, lo.Map(result, func(item *types.ERI, _ int) string { return item.ID }), node.Name); err != nil {
+		eriLog.Info("WARNING: skipped terway-compat tags on selected ERIs (best-effort)", "instanceID", node.Name, "error", err.Error())
+	}
 	return result, nil
 }
