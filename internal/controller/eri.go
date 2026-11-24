@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
@@ -38,6 +39,7 @@ const (
 	eniResourceType = "eni"
 
 	trafficModeRDMA = "HighPerformance"
+	primaryENIType  = "Primary"
 )
 
 type eriCapacity struct {
@@ -162,22 +164,45 @@ func (e *EriClient) CreateEriForInstance(ctx context.Context, instanceInfo *ecs.
 	if err != nil {
 		return nil, err
 	}
-	if *resp.StatusCode != 200 {
-		return nil, fmt.Errorf("describe network interface failed, status code: %d", resp.StatusCode)
+	if status := ptr.Deref(resp.StatusCode, 0); status != 200 {
+		return nil, fmt.Errorf("describe network interface failed, status code: %d", status)
 	}
-	var eris []*types.ERI
-	for _, eni := range resp.Body.NetworkInterfaceSets.NetworkInterfaceSet {
-		if len(cardIndex) > 0 {
-			eri := toEri(eni, queuePair)
-			eri.InstanceID = *instanceInfo.InstanceId
-			eri.CardIndex = cardIndex[0]
-			cardIndex = cardIndex[1:]
-			eris = append(eris, eri)
+	eris := make([]*types.ERI, 0, len(cardIndex))
+	for _, index := range cardIndex {
+		name := fmt.Sprintf("eri-%s-%d", *instanceInfo.InstanceId, index)
+		var pending *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet
+		if resp.Body != nil && resp.Body.NetworkInterfaceSets != nil {
+			for _, eni := range resp.Body.NetworkInterfaceSets.NetworkInterfaceSet {
+				if ptr.Deref(eni.NetworkInterfaceName, "") != name {
+					continue
+				}
+				if pending != nil {
+					return nil, fmt.Errorf("multiple ERIs match card %d on instance %s", index, *instanceInfo.InstanceId)
+				}
+				pending = eni
+			}
 		}
-	}
-	for len(cardIndex) > 0 {
+		if pending != nil {
+			id, mac := ptr.Deref(pending.NetworkInterfaceId, ""), ptr.Deref(pending.MacAddress, "")
+			if ptr.Deref(pending.Type, "") != "Secondary" || ptr.Deref(pending.NetworkInterfaceTrafficMode, "") != trafficModeRDMA ||
+				ptr.Deref(pending.Status, "") != types.ENIStatusAvailable ||
+				ptr.Deref(pending.InstanceId, "") != "" || id == "" || mac == "" {
+				return nil, fmt.Errorf("matching ERI %s for card %d is not an available secondary ERI", name, index)
+			}
+			// Apply the planned QP count if the reported value is missing or differs.
+			if int(ptr.Deref(pending.QueuePairNumber, 0)) != queuePair {
+				if err := e.configureENIForRDMA(ctx, id, queuePair); err != nil {
+					return nil, fmt.Errorf("configure QPs on unattached ERI %s: %w", id, err)
+				}
+			}
+			eris = append(eris, &types.ERI{ID: id, MAC: mac, InstanceID: *instanceInfo.InstanceId, CardIndex: index, QueuePair: queuePair})
+			continue
+		}
+		// Keep the token stable when a successful create is not visible to the next lookup.
+		token := sha256.Sum256([]byte("erdma:create-eni:" + e.regionID + ":" + name))
 		eriResp, err := e.client.CreateNetworkInterface(ctx, &ecs.CreateNetworkInterfaceRequest{
-			NetworkInterfaceName:        ptr.To(fmt.Sprintf("eri-%s-%d", *instanceInfo.InstanceId, cardIndex[0])),
+			ClientToken:                 ptr.To(fmt.Sprintf("%x", token)),
+			NetworkInterfaceName:        ptr.To(name),
 			NetworkInterfaceTrafficMode: ptr.To(trafficModeRDMA),
 			QueuePairNumber:             ptr.To(int32(queuePair)),
 			RegionId:                    ptr.To(e.regionID),
@@ -202,23 +227,15 @@ func (e *EriClient) CreateEriForInstance(ctx context.Context, instanceInfo *ecs.
 			IsPrimaryENI: false,
 			MAC:          *eriResp.Body.MacAddress,
 			InstanceID:   *instanceInfo.InstanceId,
-			CardIndex:    cardIndex[0],
+			CardIndex:    index,
+			QueuePair:    queuePair,
 		})
-		cardIndex = cardIndex[1:]
 	}
 	return eris, nil
 }
 
 func (e *EriClient) ConvertPrimaryENI(ctx context.Context, primaryENI string, instanceID string, queuePair int) error {
-	if _, err := e.client.ModifyNetworkInterfaceAttribute(ctx, &ecs.ModifyNetworkInterfaceAttributeRequest{
-		RegionId:           ptr.To(e.regionID),
-		NetworkInterfaceId: ptr.To(primaryENI),
-		NetworkInterfaceTrafficConfig: &ecs.ModifyNetworkInterfaceAttributeRequestNetworkInterfaceTrafficConfig{
-			NetworkInterfaceTrafficMode: ptr.To(trafficModeRDMA),
-			// todo: not support dynamic set queue pair number
-			QueuePairNumber: ptr.To(int32(queuePair)),
-		},
-	}); err != nil {
+	if err := e.configureENIForRDMA(ctx, primaryENI, queuePair); err != nil {
 		return err
 	}
 	if err := e.EnsureEriTags(ctx, []string{primaryENI}, instanceID); err != nil {
@@ -226,6 +243,19 @@ func (e *EriClient) ConvertPrimaryENI(ctx context.Context, primaryENI string, in
 		eriLog.Info("WARNING: skipped terway-compat tags on primary ENI after RDMA convert (best-effort)", "eni", primaryENI, "error", err.Error())
 	}
 	return nil
+}
+
+// configureENIForRDMA sets the ENI traffic mode to HighPerformance and configures its QP count.
+func (e *EriClient) configureENIForRDMA(ctx context.Context, eniID string, queuePair int) error {
+	_, err := e.client.ModifyNetworkInterfaceAttribute(ctx, &ecs.ModifyNetworkInterfaceAttributeRequest{
+		RegionId:           ptr.To(e.regionID),
+		NetworkInterfaceId: ptr.To(eniID),
+		NetworkInterfaceTrafficConfig: &ecs.ModifyNetworkInterfaceAttributeRequestNetworkInterfaceTrafficConfig{
+			NetworkInterfaceTrafficMode: ptr.To(trafficModeRDMA),
+			QueuePairNumber:             ptr.To(int32(queuePair)),
+		},
+	})
+	return err
 }
 
 // EnsureEriTags adds the terway-excluded and instance-id tags to the given ENIs.
@@ -362,36 +392,44 @@ func (e *EriClient) SelectERIs(ctx context.Context, instanceInfo *ecs.DescribeIn
 
 func (e *EriClient) SelectEriFromExist(existENIs []*ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, queuePairCount, cardCount int) ([]*types.ERI, []int, int, error) {
 	var existQueuePairCount int
-	existERIs := lo.Filter(existENIs, func(item *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, _ int) bool {
-		eri := item.NetworkInterfaceTrafficMode != nil && *item.NetworkInterfaceTrafficMode == trafficModeRDMA
-		if eri {
-			existQueuePairCount += int(*item.QueuePairNumber)
+	var primary *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet
+	existERIs := make([]*ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, 0, len(existENIs))
+	for _, eni := range existENIs {
+		if primary == nil && ptr.Deref(eni.Type, "") == primaryENIType {
+			primary = eni
 		}
-		return eri
-	})
+		if ptr.Deref(eni.NetworkInterfaceTrafficMode, "") != trafficModeRDMA {
+			continue
+		}
+		qps := ptr.Deref(eni.QueuePairNumber, 0)
+		if qps <= 0 {
+			return nil, nil, 0, fmt.Errorf("missing or invalid QP count for existing ERI %s", ptr.Deref(eni.NetworkInterfaceId, ""))
+		}
+		existQueuePairCount += int(qps)
+		existERIs = append(existERIs, eni)
+	}
 	eriLog.Info("exist eri", "existERIs", lo.Map(existERIs, func(item *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, _ int) *types.ERI {
 		return toEri(item, 0)
 	}), "existQueuePairCount", existQueuePairCount, "osMaxQueuePairCount", queuePairCount, "cardCount", cardCount)
 
-	var (
-		selectedENIs []*ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet
-		cardIndexENI = map[int]*types.ERI{}
-	)
-
+	eris := make([]*types.ERI, 0, len(existERIs))
+	selectedCards := make(map[int]bool)
 	for _, eri := range existERIs {
-		if !e.OwnENI(eri) {
-			continue
+		index := eniCardIndex(eri)
+		if !selectedCards[index] && e.OwnENI(eri) {
+			selectedCards[index] = true
+			eris = append(eris, toEri(eri, 0))
 		}
-		eniIndex := eniCardIndex(eri)
-		if _, ok := cardIndexENI[eniIndex]; !ok {
-			cardIndexENI[eniIndex] = toEri(eri, 0)
-			selectedENIs = append(selectedENIs, eri)
-		}
+	}
+	// Reuse an enabled primary before counting slots that need QPs.
+	if cardCount > 0 && !selectedCards[0] && primary != nil && ptr.Deref(primary.NetworkInterfaceTrafficMode, "") == trafficModeRDMA {
+		selectedCards[0] = true
+		eris = append(eris, toEri(primary, 0))
 	}
 	var needCreateOrConvert []int
 	if existQueuePairCount <= queuePairCount {
 		for i := 0; i < cardCount; i++ {
-			if _, ok := cardIndexENI[i]; !ok {
+			if !selectedCards[i] {
 				needCreateOrConvert = append(needCreateOrConvert, i)
 			}
 		}
@@ -401,19 +439,12 @@ func (e *EriClient) SelectEriFromExist(existENIs []*ecs.DescribeNetworkInterface
 	if len(needCreateOrConvert) > 0 {
 		remainQueuePairCountPerCardIndex = (queuePairCount - existQueuePairCount) / len(needCreateOrConvert)
 		if remainQueuePairCountPerCardIndex > 0 {
-			if _, ok := cardIndexENI[0]; !ok {
-				// if cardIndex 0 not bind ENI, using primary ENI as cardIndex 0 ENI
-				for _, eni := range existENIs {
-					if eni.Type != nil && *eni.Type == "Primary" {
-						selectedENIs = append(selectedENIs, eni)
-						cardIndexENI[0] = toEri(eni, remainQueuePairCountPerCardIndex)
-						cardIndex0Idx := lo.IndexOf(needCreateOrConvert, 0)
-						// remove from create list
-						needCreateOrConvert = append(needCreateOrConvert[:cardIndex0Idx], needCreateOrConvert[cardIndex0Idx+1:]...)
-					}
-				}
+			if needCreateOrConvert[0] == 0 && primary != nil {
+				// Reserve the primary's share for conversion.
+				eris = append(eris, toEri(primary, remainQueuePairCountPerCardIndex))
+				needCreateOrConvert = needCreateOrConvert[1:]
 			}
-			if len(cardIndexENI) == 0 {
+			if len(eris) == 0 {
 				return nil, nil, 0, fmt.Errorf("cannot find node primary ENI or existing ENI")
 			}
 		} else {
@@ -421,13 +452,10 @@ func (e *EriClient) SelectEriFromExist(existENIs []*ecs.DescribeNetworkInterface
 		}
 	}
 
-	eriList := lo.Map(selectedENIs, func(item *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, _ int) *types.ERI {
-		return toEri(item, remainQueuePairCountPerCardIndex)
-	})
-	if len(eriList) == 0 && len(needCreateOrConvert) == 0 {
+	if len(eris) == 0 && len(needCreateOrConvert) == 0 {
 		return nil, nil, 0, fmt.Errorf("cannot create ERI for instance due to no available slot")
 	}
-	return eriList, needCreateOrConvert, remainQueuePairCountPerCardIndex, nil
+	return eris, needCreateOrConvert, remainQueuePairCountPerCardIndex, nil
 }
 
 func (e *EriClient) EnsureEriForInstance(ctx context.Context, devices []networkv1.DeviceInfo) ([]networkv1.DeviceStatus, error) {
@@ -550,7 +578,7 @@ func eniCardIndex(eni *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterface
 func toEri(eni *ecs.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet, preferQueueCount int) *types.ERI {
 	eri := &types.ERI{
 		ID:           *eni.NetworkInterfaceId,
-		IsPrimaryENI: *eni.Type == "Primary",
+		IsPrimaryENI: *eni.Type == primaryENIType,
 		MAC:          *eni.MacAddress,
 		CardIndex:    eniCardIndex(eni),
 		QueuePair:    preferQueueCount,
