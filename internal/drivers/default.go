@@ -60,7 +60,7 @@ func (d *DefaultDriver) ProbeDevice(eri *types.ERI) (*types.ERdmaDeviceInfo, err
 				MAC:          eri.MAC,
 				DevPaths:     devPaths,
 				NUMA:         numa,
-				Capabilities: types.ERDMA_CAP_VERBS | types.ERDMA_CAP_RDMA_CM | types.ERDMA_CAP_SMC_R,
+				Capabilities: types.ERDMA_CAP_VERBS | types.ERDMA_CAP_RDMA_CM | smcRCapability(),
 			}, nil
 		}
 	}

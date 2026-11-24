@@ -1,9 +1,39 @@
 package drivers
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestSMCSetupKernelSupport(t *testing.T) {
+	for _, config := range []string{"# CONFIG_SMC is not set", "CONFIG_SMC=m"} {
+		t.Run(config, func(t *testing.T) {
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "config")
+			if err := os.WriteFile(configPath, []byte(config+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			// Run the decision script without touching the host's kernel/modules.
+			script := strings.NewReplacer(
+				"/sys/module/smc", fmt.Sprintf("%q", filepath.Join(dir, "smc")),
+				"/boot/config-$(uname -r)", fmt.Sprintf("%q", configPath),
+				"/proc/config.gz", fmt.Sprintf("%q", filepath.Join(dir, "missing.gz")),
+			).Replace(smcSetupScript)
+			output, err := exec.Command("bash", "-c", "set -e\nmodinfo() { return 1; }\nmodprobe() { return 7; }\n"+script).CombinedOutput()
+			if config == "# CONFIG_SMC is not set" {
+				if err != nil {
+					t.Fatalf("unsupported kernel must skip SMC: %v, output=%s", err, output)
+				}
+			} else if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 7 {
+				t.Fatalf("must preserve modprobe failure: %v, output=%s", err, output)
+			}
+		})
+	}
+}
 
 // getDriverSetupScript encodes the per-profile install/activation decisions.
 // We assert those decisions directly on the generated script rather than
