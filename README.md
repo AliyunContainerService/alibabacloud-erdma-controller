@@ -57,6 +57,14 @@ credentials:
   accessKeyID: "{access key}"
   accessKeySecret: "{access key secret}"
 ```
+#### Lingjun nodes with eRDMA
+
+Lingjun nodes are supported when their eRDMA ENIs are already attached and
+HighPerformance is enabled. Ensure the agent's scheduling configuration allows
+these nodes. Only RDMA devices associated with the selected ENIs are exposed;
+tail-network RDMA devices are excluded. Use `hostNetwork: true` for the verified
+cross-node verbs configuration.
+
 #### localERIDiscovery mode
 To expose existing erdma devices on the node to pods, enable `localERIDiscovery` configuration in values.yaml. This eliminates the need to create and authorize ram roles and policies according to the above steps for accessing the erdma API.
 ##### expose specified erdma devices on each node
