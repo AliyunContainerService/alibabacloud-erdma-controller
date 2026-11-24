@@ -117,27 +117,42 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	instanceInfo, err := r.EriClient.InstanceFromNode(ctx, &node)
-	if err != nil {
-		return requeueOnECSThrottling(err, erdmaLogger)
-	}
-	instanceID := *instanceInfo.InstanceId
-	eri, err := r.EriClient.SelectERIs(ctx, instanceInfo)
-	if err != nil {
-		return requeueOnECSThrottling(err, erdmaLogger)
-	}
-	if eri == nil {
-		erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
-		return ctrl.Result{}, nil
-	}
-	jumboFrame, err := r.EriClient.IsJumboFrameEnabled(ctx, instanceID)
-	if err != nil {
-		var throttlingErr *aliyunclient.ThrottlingError
-		if stderrors.As(err, &throttlingErr) {
+	var (
+		instanceID string
+		eri        []*types.ERI
+		jumboFrame bool
+	)
+	if isLingjunNode(&node) {
+		instanceID = node.Spec.ProviderID
+		eri, err = r.EriClient.SelectLingjunERIs(ctx, instanceID)
+		if err != nil {
 			return requeueOnECSThrottling(err, erdmaLogger)
 		}
-		erdmaLogger.Error(err, "failed to check jumbo frame status, defaulting to false")
-		jumboFrame = false
+	} else {
+		instanceInfo, err := r.EriClient.InstanceFromNode(ctx, &node)
+		if err != nil {
+			return requeueOnECSThrottling(err, erdmaLogger)
+		}
+		instanceID = *instanceInfo.InstanceId
+		eri, err = r.EriClient.SelectERIs(ctx, instanceInfo)
+		if err != nil {
+			return requeueOnECSThrottling(err, erdmaLogger)
+		}
+		if len(eri) > 0 {
+			jumboFrame, err = r.EriClient.IsJumboFrameEnabled(ctx, instanceID)
+			if err != nil {
+				var throttlingErr *aliyunclient.ThrottlingError
+				if stderrors.As(err, &throttlingErr) {
+					return requeueOnECSThrottling(err, erdmaLogger)
+				}
+				erdmaLogger.Error(err, "failed to check jumbo frame status, defaulting to false")
+				jumboFrame = false
+			}
+		}
+	}
+	if len(eri) == 0 {
+		erdmaLogger.Info("node not support erdma", "name", node.Name, "instance-id", instanceID)
+		return ctrl.Result{}, nil
 	}
 	erdmaDevice := networkv1.ERdmaDevice{
 		ObjectMeta: metav1.ObjectMeta{
@@ -311,7 +326,7 @@ func (r *NodeReconciler) PredictNodeUpdate(oldNode, newNode *v1.Node) bool {
 		return true
 	}
 
-	return oldNode.Spec.ProviderID != newNode.Spec.ProviderID
+	return oldNode.Spec.ProviderID != newNode.Spec.ProviderID || isLingjunNode(oldNode) != isLingjunNode(newNode)
 }
 
 // SetupWithManager sets up the controller with the Manager.
