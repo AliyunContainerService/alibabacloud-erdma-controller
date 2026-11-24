@@ -430,6 +430,36 @@ func TestSelectEriFromExist(t *testing.T) {
 	}
 }
 
+func TestSelectEriAllocatesQueuePairsForNewDevices(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		trafficMode string
+		existingQP  int32
+	}{
+		{name: "reuse untagged primary ERI", trafficMode: "HighPerformance", existingQP: 60},
+		{name: "convert standard primary ENI", trafficMode: "Standard"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &controller.EriClient{}
+			eris, needCreate, queuePairs, err := e.SelectEriFromExist(
+				[]*client.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet{{
+					NetworkInterfaceId:          lo.ToPtr("eni-primary"),
+					Type:                        lo.ToPtr("Primary"),
+					NetworkInterfaceTrafficMode: lo.ToPtr(tt.trafficMode),
+					QueuePairNumber:             lo.ToPtr(tt.existingQP),
+					MacAddress:                  lo.ToPtr("00:16:3e:00:00:01"),
+				}}, 120, 2,
+			)
+			assert.NoError(t, err)
+			assert.Equal(t, []*types.ERI{{
+				ID: "eni-primary", IsPrimaryENI: true, QueuePair: 60, MAC: "00:16:3e:00:00:01",
+			}}, eris)
+			assert.Equal(t, []int{1}, needCreate)
+			assert.Equal(t, 60, queuePairs)
+		})
+	}
+}
+
 func TestSelectEriNoManagedExists(t *testing.T) {
 	tests := []struct {
 		name                     string
@@ -452,7 +482,7 @@ func TestSelectEriNoManagedExists(t *testing.T) {
 			expectedError:            true,
 		},
 		{
-			name: "Existing Primary ENIs is RDMA and with sufficient queue pairs",
+			name: "Reuse existing primary ERI even when all queue pairs are allocated",
 			existENIs: []*client.DescribeNetworkInterfacesResponseBodyNetworkInterfaceSetsNetworkInterfaceSet{
 				{
 					NetworkInterfaceId:          lo.ToPtr("eni-1"),
@@ -465,12 +495,17 @@ func TestSelectEriNoManagedExists(t *testing.T) {
 					},
 				},
 			},
-			queuePairCount:           8,
-			cardCount:                1,
-			expectedERIs:             []*types.ERI{},
+			queuePairCount: 8,
+			cardCount:      1,
+			expectedERIs: []*types.ERI{{
+				ID:           "eni-1",
+				IsPrimaryENI: true,
+				QueuePair:    8,
+				MAC:          "00:16:3e:00:00:00",
+			}},
 			expectedNeedCreate:       []int{},
 			expectedQueuePairPerCard: 0,
-			expectedError:            true,
+			expectedError:            false,
 		},
 		{
 			name: "Existing Secondary RDMA ENI is RDMA and with sufficient queue pairs",
