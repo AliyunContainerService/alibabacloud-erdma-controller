@@ -1,7 +1,12 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"net"
+	"net/http"
+	"time"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/agent"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/drivers"
@@ -24,6 +29,7 @@ func main() {
 		exposedLocalERIs      string
 		erdmaInstallerVersion string
 		jumboFrameMTU         int
+		probeAddr             string
 	)
 	flag.StringVar(&preferDriver, "prefer-driver", "", "prefer driver")
 	flag.BoolVar(&allocAllDevices, "allocate-all-devices", false,
@@ -38,6 +44,8 @@ func main() {
 		"erdma installer package version for missing drivers (does not upgrade installed drivers)")
 	flag.IntVar(&jumboFrameMTU, "jumbo-frame-mtu", 8500,
 		"MTU value to set on ERDMA network interfaces when jumbo frame is enabled")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", "127.0.0.1:18081",
+		"The address the health probe endpoint binds to.")
 	flag.Parse()
 
 	eriAgent, err := agent.NewAgent(
@@ -52,8 +60,42 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	err = eriAgent.Run()
+	err = runAgent(ctrl.SetupSignalHandler(), eriAgent, probeAddr)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func runAgent(parent context.Context, eriAgent *agent.Agent, probeAddr string) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	listener, err := net.Listen("tcp", probeAddr)
+	if err != nil {
+		return err
+	}
+	server := &http.Server{
+		Handler:           eriAgent.HealthHandler(ctx),
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+	}
+	serverErr := make(chan error, 1)
+	go func() {
+		err := server.Serve(listener)
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		serverErr <- err
+		cancel()
+	}()
+	err = eriAgent.RunContext(ctx)
+	if errors.Is(err, context.Canceled) {
+		err = nil
+	}
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if shutdownErr := server.Shutdown(shutdownCtx); shutdownErr != nil {
+		_ = server.Close()
+		err = errors.Join(err, shutdownErr)
+	}
+	return errors.Join(err, <-serverErr)
 }

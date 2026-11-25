@@ -29,8 +29,25 @@ spec:
       serviceAccountName: {{ include "alibabacloud-erdma-controller.serviceAccountName" . }}
       containers:
         - name: {{ .Chart.Name }}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          {{- with .Values.controller.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.controller.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: webhook
               containerPort: 9443

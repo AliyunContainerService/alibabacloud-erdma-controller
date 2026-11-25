@@ -5,6 +5,24 @@
 # controller will not be deployed if localERIDiscovery is set
 controller:
   replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8081
+    periodSeconds: 20
+    timeoutSeconds: 3
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8081
+    periodSeconds: 10
+    timeoutSeconds: 3
   image:
     repository: registry.aliyuncs.com/erdma/controller
     pullPolicy: Always
@@ -18,6 +36,28 @@ controller:
   affinity: {}
 
 agent:
+  healthProbeBindAddress: "127.0.0.1:18081"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+  livenessProbe:
+    httpGet:
+      host: 127.0.0.1
+      path: /healthz
+      port: 18081
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 3
+  readinessProbe:
+    httpGet:
+      host: 127.0.0.1
+      path: /readyz
+      port: 18081
+    periodSeconds: 10
+    timeoutSeconds: 3
   image:
     repository: registry.aliyuncs.com/erdma/agent
     pullPolicy: Always

@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -215,4 +216,27 @@ func toUnstructured(t *testing.T, object runtime.Object) *unstructured.Unstructu
 		t.Fatalf("convert object to unstructured: %v", err)
 	}
 	return &unstructured.Unstructured{Object: content}
+}
+
+func TestWaitEriInfoPreservesCancellation(t *testing.T) {
+	resource := newObservedResource()
+	k := &k8s{nodeName: "node-no-devices", resource: resource}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := k.WaitEriInfoContext(ctx); done <- err }()
+	select {
+	case <-resource.watchStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("device watch did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled watch returned %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled watch did not exit")
+	}
 }
