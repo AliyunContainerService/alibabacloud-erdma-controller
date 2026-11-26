@@ -38,7 +38,6 @@ spec:
                 - SYS_PTRACE
           command:
             - /usr/local/bin/agent
-            - --health-probe-bind-address={{ .Values.agent.healthProbeBindAddress }}
             {{ if .Values.agent.preferDriver }}
             - --prefer-driver
             - {{ .Values.agent.preferDriver }}

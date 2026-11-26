@@ -36,7 +36,6 @@ controller:
   affinity: {}
 
 agent:
-  healthProbeBindAddress: "127.0.0.1:18081"
   resources:
     requests:
       cpu: 100m
@@ -44,18 +43,14 @@ agent:
     limits:
       cpu: "1"
   livenessProbe:
-    httpGet:
-      host: 127.0.0.1
-      path: /healthz
-      port: 18081
+    exec:
+      command: ["/usr/local/bin/agent", "--health-check=healthz"]
     initialDelaySeconds: 10
     periodSeconds: 20
     timeoutSeconds: 3
   readinessProbe:
-    httpGet:
-      host: 127.0.0.1
-      path: /readyz
-      port: 18081
+    exec:
+      command: ["/usr/local/bin/agent", "--health-check=readyz"]
     periodSeconds: 10
     timeoutSeconds: 3
   image:
