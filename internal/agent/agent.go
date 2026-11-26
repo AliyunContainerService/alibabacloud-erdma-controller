@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -34,6 +36,8 @@ var deviceProbeBackoff = wait.Backoff{
 }
 
 type Agent struct {
+	plugin               atomic.Pointer[deviceplugin.ERDMADevicePlugin]
+	waitingForDevices    atomic.Bool
 	kubernetes           k8s.Kubernetes
 	driver               drivers.ERdmaDriver
 	allocAllDevices      bool
@@ -120,14 +124,35 @@ func allocRdmaCMForDriver(driverName string) bool {
 	return driverName == "default" || driverName == "compat"
 }
 
-func (a *Agent) Run() error {
+// HealthHandler stays live during device discovery and driver installation.
+// An idle agent can accept device configuration. Once configuration arrives,
+// readiness requires an active device-plugin connection to kubelet.
+func (a *Agent) HealthHandler(ctx context.Context) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		plugin := a.plugin.Load()
+		if ctx.Err() != nil || (!a.waitingForDevices.Load() && (plugin == nil || !plugin.Ready())) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	return mux
+}
+
+func (a *Agent) Run(ctx context.Context) error {
 	go stackTriger()
 	var err error
 	var eriInfos *networkv1.ERdmaDevice
 	var eri []*types.ERI
 	if !a.localERIDiscovery {
 		// 1. wait related eri device
-		eriInfos, err = a.kubernetes.WaitEriInfo()
+		a.waitingForDevices.Store(true)
+		eriInfos, err = a.kubernetes.WaitEriInfo(ctx)
+		a.waitingForDevices.Store(false)
 		if err != nil {
 			return err
 		}
@@ -156,10 +181,16 @@ func (a *Agent) Run() error {
 		}
 	}
 	agentLog.Info("eri info", "eriInfo", eriInfos, "driver", a.driver.Name())
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// 2. install eri driver
 	err = a.driver.Install()
 	if err != nil {
 		return fmt.Errorf("ensure eri driver failed: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if allocRdmaCMForDriver(a.driver.Name()) {
 		if err := drivers.EnsureRdmaCM(); err != nil {
@@ -168,7 +199,7 @@ func (a *Agent) Run() error {
 	}
 	erdmaDevices := make([]*types.ERdmaDeviceInfo, 0)
 	for _, eriInfo := range eriInfos.Spec.Devices {
-		deviceInfo, err := probeDeviceWithRetry(context.Background(), a.driver, &types.ERI{
+		deviceInfo, err := probeDeviceWithRetry(ctx, a.driver, &types.ERI{
 			ID:            eriInfo.ID,
 			IsPrimaryENI:  eriInfo.IsPrimaryENI,
 			MAC:           eriInfo.MAC,
@@ -201,7 +232,9 @@ func (a *Agent) Run() error {
 	if err != nil {
 		return fmt.Errorf("new erdma device plugin failed, err: %v", err)
 	}
-	devicePlugin.Serve()
+	a.plugin.Store(devicePlugin)
+	defer a.plugin.Store(nil)
+	devicePlugin.Serve(ctx)
 	// 5. todo watch & config smc-r and verbs devices
 	return nil
 }

@@ -43,7 +43,7 @@ func init() {
 }
 
 type Kubernetes interface {
-	WaitEriInfo() (*v1.ERdmaDevice, error)
+	WaitEriInfo(context.Context) (*v1.ERdmaDevice, error)
 }
 
 func NewKubernetes() (Kubernetes, error) {
@@ -69,15 +69,11 @@ type k8s struct {
 	resource dynamic.ResourceInterface
 }
 
-func (k *k8s) WaitEriInfo() (*v1.ERdmaDevice, error) {
-	return k.waitEriInfo(context.Background())
-}
-
 func hasERdmaDeviceSpec(device *v1.ERdmaDevice) bool {
 	return device != nil && len(device.Spec.Devices) > 0
 }
 
-func (k *k8s) waitEriInfo(ctx context.Context) (*v1.ERdmaDevice, error) {
+func (k *k8s) WaitEriInfo(ctx context.Context) (*v1.ERdmaDevice, error) {
 	selector := labels.Set{eriNodeNameLabel: k.nodeName}.AsSelector().String()
 	lw := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -113,6 +109,9 @@ func (k *k8s) waitEriInfo(ctx context.Context) (*v1.ERdmaDevice, error) {
 		return true, nil
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, fmt.Errorf("wait for erdma device %s: %w", k.nodeName, err)
 	}
 	return device, nil

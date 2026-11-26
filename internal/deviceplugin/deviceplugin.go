@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -32,6 +33,7 @@ const (
 
 // ERDMADevicePlugin implements the Kubernetes device plugin API
 type ERDMADevicePlugin struct {
+	ready                atomic.Bool
 	socket               string
 	server               *grpc.Server
 	stop                 chan struct{}
@@ -91,6 +93,7 @@ func dial(unixSocketPath string, timeout time.Duration) (*grpc.ClientConn, func(
 
 // Start starts the gRPC server of the device plugin
 func (m *ERDMADevicePlugin) Start() error {
+	m.ready.Store(false)
 	if m.server != nil {
 		close(m.stop)
 		m.server.Stop()
@@ -197,15 +200,32 @@ func (m *ERDMADevicePlugin) PreStartContainer(ctx context.Context, req *pluginap
 
 // Stop stops the gRPC server
 func (m *ERDMADevicePlugin) Stop() error {
+	m.ready.Store(false)
 	if m.server == nil {
 		return nil
 	}
 
 	close(m.stop)
-	m.server.Stop()
+	server := m.server
+	stopped := make(chan struct{})
+	go func() {
+		server.GracefulStop()
+		close(stopped)
+	}()
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-stopped:
+	case <-timer.C:
+		server.Stop()
+	}
 	m.server = nil
 
-	return m.cleanup()
+	err := os.Remove(m.socket)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 // Register registers the device plugin for the given resourceName with Kubelet.
@@ -234,6 +254,7 @@ func (m *ERDMADevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DeviceP
 	stop, restart := m.stop, m.restartCh
 	m.Unlock()
 	defer func() {
+		m.ready.Store(false)
 		// Stop closes stop before stopping gRPC. Only re-register if we still
 		// intend to serve, regardless of why kubelet's stream disconnected.
 		select {
@@ -265,6 +286,7 @@ func (m *ERDMADevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DeviceP
 	if err != nil {
 		return err
 	}
+	m.ready.Store(true)
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 	for {
@@ -377,7 +399,7 @@ func (m *ERDMADevicePlugin) cleanup() error {
 	return nil
 }
 
-func (m *ERDMADevicePlugin) watchKubeletRestart(watcher *fsnotify.Watcher) {
+func (m *ERDMADevicePlugin) watchKubeletRestart(ctx context.Context, watcher *fsnotify.Watcher) {
 	for {
 		// Retry a failed registration even if kubelet.sock is not recreated.
 		var retry <-chan time.Time
@@ -385,6 +407,8 @@ func (m *ERDMADevicePlugin) watchKubeletRestart(watcher *fsnotify.Watcher) {
 			retry = time.After(5 * time.Second)
 		}
 		select {
+		case <-ctx.Done():
+			return
 		case <-m.restartCh:
 		case <-retry:
 		case event, ok := <-watcher.Events:
@@ -432,8 +456,21 @@ func (m *ERDMADevicePlugin) watchKubeletRestart(watcher *fsnotify.Watcher) {
 	}
 }
 
-// Serve starts the gRPC server and register the device plugin to Kubelet
-func (m *ERDMADevicePlugin) Serve() {
+// Ready reports whether kubelet has received this plugin's device list.
+func (m *ERDMADevicePlugin) Ready() bool {
+	return m.ready.Load()
+}
+
+// Serve registers with kubelet and releases the plugin socket on cancellation.
+func (m *ERDMADevicePlugin) Serve(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	defer func() {
+		if err := m.Stop(); err != nil {
+			klog.Errorf("stop device plugin: %v", err)
+		}
+	}()
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		klog.Fatalf("create kubelet socket watcher: %v", err)
@@ -472,5 +509,5 @@ func (m *ERDMADevicePlugin) Serve() {
 	} else {
 		klog.Infof("Registered device plugin with Kubelet")
 	}
-	m.watchKubeletRestart(watcher)
+	m.watchKubeletRestart(ctx, watcher)
 }
