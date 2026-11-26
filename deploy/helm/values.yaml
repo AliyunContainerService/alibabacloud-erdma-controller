@@ -57,6 +57,8 @@ nodeSelector: {}
 tolerations:
   - operator: "Exists"
 
+# Lingjun nodes additionally require network.alibabacloud.com/erdma-enabled=true.
+# This requirement is combined with every required node-affinity term.
 affinity: {}
 
 webhookFailurePolicy: Ignore

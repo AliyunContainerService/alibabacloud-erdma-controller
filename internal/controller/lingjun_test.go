@@ -11,6 +11,7 @@ import (
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	ecs "github.com/alibabacloud-go/ecs-20140526/v4/client"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -104,6 +105,7 @@ func TestLingjunReconcileUsesENIsWithoutECSProvisioning(t *testing.T) {
 		Spec:       corev1.NodeSpec{ProviderID: "e02-test"},
 		Status:     corev1.NodeStatus{Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}}},
 	}
+	node.Labels[consts.ERdmaEnabledLabel] = "true"
 	// The real Lingjun layout has two pre-provisioned eRDMA ENIs plus
 	// ordinary ENIs. Keep synthetic identities while covering that topology.
 	primary := attachedLingjunENI("eni-primary", trafficModeRDMA)
@@ -225,5 +227,64 @@ func TestSelectLingjunERIsPaginationAndFailures(t *testing.T) {
 	api.requests = nil
 	if _, err = e.SelectLingjunERIs(context.Background(), ""); err == nil || len(api.requests) != 0 {
 		t.Fatal("empty providerID must not issue an unfiltered ENI query")
+	}
+}
+
+func TestLingjunOptInLifecycle(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := networkv1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "lingjun-opt-in", UID: "node-uid", Labels: map[string]string{consts.LingjunWorkerLabel: consts.LingjunWorkerLabelValue}},
+		Spec:       corev1.NodeSpec{ProviderID: "e01-test"},
+		Status:     corev1.NodeStatus{Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}}},
+	}
+	eni := attachedLingjunENI("eni-existing", trafficModeRDMA)
+	eni.QueuePairNumber = ptr.To(int32(120))
+	api := &lingjunTestAPI{enis: []*lingjunENI{eni}}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithObjects(node).Build()
+	reconciler := &NodeReconciler{Client: kube, EriClient: &EriClient{client: api, regionID: "cn-wulanchabu"}, CtrlConfig: &types.Config{}}
+	request := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(node)}
+	steps := []struct {
+		value       string
+		wantDevice  bool
+		wantQueries int
+	}{
+		{value: "", wantDevice: false, wantQueries: 0},
+		{value: "true", wantDevice: true, wantQueries: 1},
+		{value: "", wantDevice: false, wantQueries: 1},
+		{value: "true", wantDevice: true, wantQueries: 2},
+		{value: "false", wantDevice: false, wantQueries: 2},
+	}
+	for i, step := range steps {
+		old := node.DeepCopy()
+		delete(node.Labels, consts.ERdmaEnabledLabel)
+		if step.value != "" {
+			node.Labels[consts.ERdmaEnabledLabel] = step.value
+		}
+		if err := kube.Update(ctx, node); err != nil {
+			t.Fatal(err)
+		}
+		if i > 0 && !reconciler.PredictNodeUpdate(old, node) {
+			t.Fatalf("label transition %d was ignored", i)
+		}
+		if _, err := reconciler.Reconcile(ctx, request); err != nil {
+			t.Fatal(err)
+		}
+		err := kube.Get(ctx, request.NamespacedName, &networkv1.ERdmaDevice{})
+		if step.wantDevice && err != nil {
+			t.Fatalf("enabled node has no device: %v", err)
+		}
+		if !step.wantDevice && !apierrors.IsNotFound(err) {
+			t.Fatalf("disabled node retained device metadata: %v", err)
+		}
+		if len(api.requests) != step.wantQueries {
+			t.Fatalf("step %d queried cloud %d times, want %d", i, len(api.requests), step.wantQueries)
+		}
 	}
 }

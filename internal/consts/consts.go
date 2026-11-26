@@ -8,4 +8,7 @@ const (
 	// LingjunWorkerLabel identifies Lingjun nodes.
 	LingjunWorkerLabel      = "alibabacloud.com/lingjun-worker"
 	LingjunWorkerLabelValue = "true"
+	// ERdmaEnabledLabel opts a Lingjun node into frontend eRDMA management.
+	ERdmaEnabledLabel      = "network.alibabacloud.com/erdma-enabled"
+	ERdmaEnabledLabelValue = "true"
 )

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	aliyunclient "github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/aliyun/client"
+	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/consts"
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/types"
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
@@ -78,6 +79,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 	if !r.OwnNode(&node) {
+		if isLingjunNode(&node) && node.Labels[consts.ERdmaEnabledLabel] != consts.ERdmaEnabledLabelValue {
+			return RemoveERdmaDevices(r.Client, ctx, req.Name)
+		}
 		return ctrl.Result{}, nil
 	}
 	if !node.GetDeletionTimestamp().IsZero() {
@@ -302,6 +306,9 @@ func (r *NodeReconciler) OwnNode(node *v1.Node) bool {
 	if node == nil {
 		return false
 	}
+	if isLingjunNode(node) && node.Labels[consts.ERdmaEnabledLabel] != consts.ERdmaEnabledLabelValue {
+		return false
+	}
 	for k, v := range r.CtrlConfig.NodeSelector {
 		if node.Labels[k] != v {
 			return false
@@ -311,6 +318,9 @@ func (r *NodeReconciler) OwnNode(node *v1.Node) bool {
 }
 
 func (r *NodeReconciler) PredictNodeUpdate(oldNode, newNode *v1.Node) bool {
+	if isLingjunNode(newNode) && r.OwnNode(oldNode) && !r.OwnNode(newNode) {
+		return true
+	}
 	if !r.OwnNode(newNode) {
 		return false
 	}
@@ -334,10 +344,10 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.APIReader = mgr.GetAPIReader()
 	nodePred := predicate.TypedFuncs[*v1.Node]{
 		CreateFunc: func(e event.TypedCreateEvent[*v1.Node]) bool {
-			return r.OwnNode(e.Object)
+			return r.OwnNode(e.Object) || isLingjunNode(e.Object)
 		},
 		DeleteFunc: func(e event.TypedDeleteEvent[*v1.Node]) bool {
-			return r.OwnNode(e.Object)
+			return r.OwnNode(e.Object) || isLingjunNode(e.Object)
 		},
 		UpdateFunc: func(e event.TypedUpdateEvent[*v1.Node]) bool {
 			return r.PredictNodeUpdate(e.ObjectOld, e.ObjectNew)

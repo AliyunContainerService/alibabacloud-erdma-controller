@@ -60,10 +60,25 @@ credentials:
 #### Lingjun nodes with eRDMA
 
 Lingjun nodes are supported when their eRDMA ENIs are already attached and
-HighPerformance is enabled. Ensure the agent's scheduling configuration allows
-these nodes. Only RDMA devices associated with the selected ENIs are exposed;
+HighPerformance is enabled. Opt in each intended Lingjun node with the Kubernetes
+node label `network.alibabacloud.com/erdma-enabled=true`. You can set this label
+in the ACK node pool configuration. To apply a node pool label change to existing
+nodes, select **Update Labels and Taints of Existing Nodes**.
+
+The agent's required node affinity combines this opt-in with the configured
+scheduling constraints. Its tolerations must also allow the node's taints.
+Adding the label dynamically starts the agent and allows the controller to
+discover pre-provisioned ERIs. Removing the label, or setting it to another
+value, removes the agent Pod and the ERdmaDevice metadata. Existing host drivers
+and pre-provisioned ENIs remain installed and attached. Plan label removal around
+workloads that depend on the device plugin. Ordinary ECS node selection is
+unchanged.
+
+Only RDMA devices associated with the selected ENIs are exposed;
 tail-network RDMA devices are excluded. Use `hostNetwork: true` for the verified
 cross-node verbs configuration.
+
+See the [ACK node-pool label documentation](https://help.aliyun.com/en/ack/ack-managed-and-ack-dedicated/user-guide/schedule-an-application-pod-to-a-specific-node-pool).
 
 #### localERIDiscovery mode
 To expose existing erdma devices on the node to pods, enable `localERIDiscovery` configuration in values.yaml. This eliminates the need to create and authorize ram roles and policies according to the above steps for accessing the erdma API.
