@@ -71,12 +71,12 @@ func TestWaitEriInfoReturnsExistingSelectedObject(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	got, err := k.waitEriInfo(ctx)
+	got, err := k.WaitEriInfo(ctx)
 	if err != nil {
-		t.Fatalf("waitEriInfo() error = %v", err)
+		t.Fatalf("WaitEriInfo() error = %v", err)
 	}
 	if got.Name != nodeName {
-		t.Fatalf("waitEriInfo() name = %q, want %q", got.Name, nodeName)
+		t.Fatalf("WaitEriInfo() name = %q, want %q", got.Name, nodeName)
 	}
 	wantSelector := eriNodeNameLabel + "=" + nodeName
 	if resource.listSelector != wantSelector || resource.watchSelector != wantSelector {
@@ -94,7 +94,7 @@ func TestWaitEriInfoReturnsWhenWatchObservesCreation(t *testing.T) {
 	result := make(chan *v1.ERdmaDevice, 1)
 	errs := make(chan error, 1)
 	go func() {
-		device, err := k.waitEriInfo(ctx)
+		device, err := k.WaitEriInfo(ctx)
 		if err != nil {
 			errs <- err
 			return
@@ -105,7 +105,7 @@ func TestWaitEriInfoReturnsWhenWatchObservesCreation(t *testing.T) {
 	select {
 	case <-resource.watchStarted:
 	case err := <-errs:
-		t.Fatalf("waitEriInfo() before watch error = %v", err)
+		t.Fatalf("WaitEriInfo() before watch error = %v", err)
 	case <-ctx.Done():
 		t.Fatal("watch did not start")
 	}
@@ -116,15 +116,15 @@ func TestWaitEriInfoReturnsWhenWatchObservesCreation(t *testing.T) {
 	select {
 	case got := <-result:
 		if got.Name != nodeName {
-			t.Fatalf("waitEriInfo() name = %q, want %q", got.Name, nodeName)
+			t.Fatalf("WaitEriInfo() name = %q, want %q", got.Name, nodeName)
 		}
 		if !hasERdmaDeviceSpec(got) || got.Status.Devices[0].Status != v1.DeviceStatusPending {
-			t.Fatalf("waitEriInfo() did not return the first object with a populated spec: %#v", got)
+			t.Fatalf("WaitEriInfo() did not return the first object with a populated spec: %#v", got)
 		}
 	case err := <-errs:
-		t.Fatalf("waitEriInfo() error = %v", err)
+		t.Fatalf("WaitEriInfo() error = %v", err)
 	case <-ctx.Done():
-		t.Fatal("waitEriInfo() did not return after watch creation event")
+		t.Fatal("WaitEriInfo() did not return after watch creation event")
 	}
 }
 
@@ -140,7 +140,7 @@ func TestWaitEriInfoWaitsForExistingObjectSpecUpdate(t *testing.T) {
 	result := make(chan *v1.ERdmaDevice, 1)
 	errs := make(chan error, 1)
 	go func() {
-		device, err := k.waitEriInfo(ctx)
+		device, err := k.WaitEriInfo(ctx)
 		if err != nil {
 			errs <- err
 			return
@@ -151,7 +151,7 @@ func TestWaitEriInfoWaitsForExistingObjectSpecUpdate(t *testing.T) {
 	select {
 	case <-resource.watchStarted:
 	case err := <-errs:
-		t.Fatalf("waitEriInfo() before watch error = %v", err)
+		t.Fatalf("WaitEriInfo() before watch error = %v", err)
 	case <-ctx.Done():
 		t.Fatal("watch did not start")
 	}
@@ -169,12 +169,12 @@ func TestWaitEriInfoWaitsForExistingObjectSpecUpdate(t *testing.T) {
 	select {
 	case got := <-result:
 		if !hasERdmaDeviceSpec(got) || got.Spec.Devices[0].ID != "eni-"+nodeName {
-			t.Fatalf("waitEriInfo() returned unexpected ERdmaDevice: %#v", got)
+			t.Fatalf("WaitEriInfo() returned unexpected ERdmaDevice: %#v", got)
 		}
 	case err := <-errs:
-		t.Fatalf("waitEriInfo() error = %v", err)
+		t.Fatalf("WaitEriInfo() error = %v", err)
 	case <-ctx.Done():
-		t.Fatal("waitEriInfo() did not return after spec update")
+		t.Fatal("WaitEriInfo() did not return after spec update")
 	}
 }
 
@@ -224,7 +224,7 @@ func TestWaitEriInfoPreservesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { _, err := k.WaitEriInfoContext(ctx); done <- err }()
+	go func() { _, err := k.WaitEriInfo(ctx); done <- err }()
 	select {
 	case <-resource.watchStarted:
 	case <-time.After(2 * time.Second):

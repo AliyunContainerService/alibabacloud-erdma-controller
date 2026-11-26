@@ -218,7 +218,6 @@ func (m *ERDMADevicePlugin) Stop() error {
 	case <-stopped:
 	case <-timer.C:
 		server.Stop()
-		<-stopped
 	}
 	m.server = nil
 
@@ -457,18 +456,13 @@ func (m *ERDMADevicePlugin) watchKubeletRestart(ctx context.Context, watcher *fs
 	}
 }
 
-// Serve starts the gRPC server and register the device plugin to Kubelet
-func (m *ERDMADevicePlugin) Serve() {
-	m.ServeContext(context.Background())
-}
-
 // Ready reports whether kubelet has received this plugin's device list.
 func (m *ERDMADevicePlugin) Ready() bool {
 	return m.ready.Load()
 }
 
-// ServeContext releases the device-plugin socket and stops serving on cancellation.
-func (m *ERDMADevicePlugin) ServeContext(ctx context.Context) {
+// Serve registers with kubelet and releases the plugin socket on cancellation.
+func (m *ERDMADevicePlugin) Serve(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}

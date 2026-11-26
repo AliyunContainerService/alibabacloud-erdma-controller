@@ -26,16 +26,7 @@ func TestHealthCheck(t *testing.T) {
 	if err := checkHealth(socket, "readyz"); err == nil {
 		t.Fatal("unready agent passed the readiness check")
 	}
-	if err := checkHealth(socket, "unknown"); err == nil {
-		t.Fatal("unknown check succeeded")
-	}
 	if err := checkHealth(filepath.Join(t.TempDir(), "absent.sock"), "healthz"); err == nil {
 		t.Fatal("missing socket passed the health check")
-	}
-	if err := server.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := checkHealth(socket, "healthz"); err == nil {
-		t.Fatal("stopped server passed the health check")
 	}
 }

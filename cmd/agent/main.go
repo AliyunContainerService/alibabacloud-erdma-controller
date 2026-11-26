@@ -99,7 +99,7 @@ func runAgent(parent context.Context, eriAgent *agent.Agent, probeSocket string)
 		serverErr <- err
 		cancel()
 	}()
-	err = eriAgent.RunContext(ctx)
+	err = eriAgent.Run(ctx)
 	if errors.Is(err, context.Canceled) {
 		err = nil
 	}

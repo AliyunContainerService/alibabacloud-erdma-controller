@@ -124,10 +124,6 @@ func allocRdmaCMForDriver(driverName string) bool {
 	return driverName == "default" || driverName == "compat"
 }
 
-func (a *Agent) Run() error {
-	return a.RunContext(context.Background())
-}
-
 // HealthHandler stays live during device discovery and driver installation.
 // An idle agent can accept device configuration. Once configuration arrives,
 // readiness requires an active device-plugin connection to kubelet.
@@ -147,7 +143,7 @@ func (a *Agent) HealthHandler(ctx context.Context) http.Handler {
 	return mux
 }
 
-func (a *Agent) RunContext(ctx context.Context) error {
+func (a *Agent) Run(ctx context.Context) error {
 	go stackTriger()
 	var err error
 	var eriInfos *networkv1.ERdmaDevice
@@ -155,7 +151,7 @@ func (a *Agent) RunContext(ctx context.Context) error {
 	if !a.localERIDiscovery {
 		// 1. wait related eri device
 		a.waitingForDevices.Store(true)
-		eriInfos, err = a.kubernetes.WaitEriInfoContext(ctx)
+		eriInfos, err = a.kubernetes.WaitEriInfo(ctx)
 		a.waitingForDevices.Store(false)
 		if err != nil {
 			return err
@@ -238,7 +234,7 @@ func (a *Agent) RunContext(ctx context.Context) error {
 	}
 	a.plugin.Store(devicePlugin)
 	defer a.plugin.Store(nil)
-	devicePlugin.ServeContext(ctx)
+	devicePlugin.Serve(ctx)
 	// 5. todo watch & config smc-r and verbs devices
 	return nil
 }

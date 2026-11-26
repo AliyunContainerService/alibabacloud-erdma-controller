@@ -51,16 +51,41 @@ func TestStopRemovesOnlyOwnSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := grpc.NewServer()
+	entered, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	server := grpc.NewServer(grpc.UnaryInterceptor(func(
+		ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
+	) (interface{}, error) {
+		close(entered)
+		<-release
+		return handler(ctx, req)
+	}))
+	p := &ERDMADevicePlugin{socket: socket, server: server, stop: make(chan struct{})}
+	pluginapi.RegisterDevicePluginServer(server, p)
 	go func() { _ = server.Serve(listener) }()
+	connection, closeConnection, err := dial(socket, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeConnection()
+	go func() {
+		_, _ = pluginapi.NewDevicePluginClient(connection).GetDevicePluginOptions(context.Background(), &pluginapi.Empty{})
+	}()
+	waitSignal(t, entered)
 	other := filepath.Join(dir, "other.sock")
 	if err := os.WriteFile(other, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	p := &ERDMADevicePlugin{socket: socket, server: server, stop: make(chan struct{})}
 	p.ready.Store(true)
-	if err := p.Stop(); err != nil {
-		t.Fatal(err)
+	stopped := make(chan error, 1)
+	go func() { stopped <- p.Stop() }()
+	select {
+	case err := <-stopped:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(7 * time.Second):
+		t.Fatal("stop exceeded its grace period with an unresponsive RPC")
 	}
 	if p.Ready() {
 		t.Fatal("stopped plugin remained ready")

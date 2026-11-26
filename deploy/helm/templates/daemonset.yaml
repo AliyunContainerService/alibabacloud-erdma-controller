@@ -21,7 +21,6 @@ spec:
     spec:
       hostPID: true
       hostNetwork: true
-      terminationGracePeriodSeconds: 120
       {{- with .Values.agent.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -69,15 +68,7 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
           resources:
-            {{- toYaml (.Values.resources | default .Values.agent.resources) | nindent 12 }}
-          {{- with .Values.agent.livenessProbe }}
-          livenessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.agent.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
           - mountPath: /lib/modules
             name: lib-modules
