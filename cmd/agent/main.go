@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/AliyunContainerService/alibabacloud-erdma-controller/internal/agent"
@@ -16,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-const defaultHealthSocket = "/tmp/erdma-agent-health.sock"
+const defaultHealthSocket = "/var/lib/erdma-agent/health.sock"
 
 func main() {
 	opts := zap.Options{
@@ -81,7 +82,7 @@ func main() {
 func runAgent(parent context.Context, eriAgent *agent.Agent, probeSocket string) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	listener, err := net.Listen("unix", probeSocket)
+	listener, err := listenHealthSocket(probeSocket)
 	if err != nil {
 		return err
 	}
@@ -110,6 +111,21 @@ func runAgent(parent context.Context, eriAgent *agent.Agent, probeSocket string)
 		err = errors.Join(err, shutdownErr)
 	}
 	return errors.Join(err, <-serverErr)
+}
+
+func listenHealthSocket(socket string) (net.Listener, error) {
+	if err := os.MkdirAll(filepath.Dir(socket), 0700); err != nil {
+		return nil, err
+	}
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(socket, 0600); err != nil {
+		_ = listener.Close()
+		return nil, err
+	}
+	return listener, nil
 }
 
 func checkHealth(socket, check string) error {
